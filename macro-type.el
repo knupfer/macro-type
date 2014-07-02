@@ -1,4 +1,7 @@
+;; TODO: accept 0 underfull and 0 overfull, implement underfull
+
 (defun mt-overfullness (mt-log)
+  (setq mt-underfull-boxes 0)
   (with-temp-buffer
     (let ((mt-overfull-boxes 0))
       (insert mt-log)
@@ -7,6 +10,11 @@
               "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*" nil t)
         (setq mt-overfull-boxes
               (+ mt-overfull-boxes (string-to-number (match-string 1)))))
+      (goto-char (point-min))
+      (while (re-search-forward
+              "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*" nil t)
+        (setq mt-underfull-boxes
+              (+ mt-underfull-boxes (string-to-number (match-string 1)))))
       mt-overfull-boxes)))
 
 (defun mt-change-pagesize (mt-tex-file-name
@@ -42,7 +50,7 @@
     (setq mt-times (- mt-times 1)))
   (message "Starting multicore calculation..."))
 
-(defun mt-pdflatex (mt-times mt-cores)
+(defun mt-pdflatex (mt-cores)
   (setq mt-start-count (+ mt-start-count 1))
 
   (async-start
@@ -69,14 +77,15 @@
               "%% from "
               (number-to-string (round mt-original-hboxes)) "pt to "
               (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) "/" (number-to-string mt-calculations) " processes returned"))
-     (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex mt-calculations mt-forks)))))
-  (when (< (- mt-start-count mt-receive-count) mt-forks)
-    (when (< mt-start-count mt-times)
-      (mt-pdflatex mt-times mt-forks))))
+     (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex mt-forks)))))
+  (when (and (< (- mt-start-count mt-receive-count) mt-forks)
+             (< mt-start-count mt-calculations)
+             (> mt-start-count 1))
+    (mt-pdflatex mt-forks)))
 
 (defun mt-generate-list (mt-start mt-increment mt-times mt-file mt-cores)
   (mt-change-pagesize mt-file mt-start mt-times mt-increment)
-  (mt-pdflatex mt-times mt-cores))
+  (mt-pdflatex mt-cores))
 
 (defun mt-macro-type-tex-file (mt-file mt-range mt-times mt-cores)
   (interactive (list (read-file-name
@@ -95,6 +104,9 @@
     (setq mt-original-hboxes nil)
     (setq mt-best-hboxes nil)
     (setq mt-forks mt-cores)
+    (setq mt-underfull-boxes 0)
+    (setq mt-original-badness nil)
+    (setq mt-best-badness nil)
     (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file mt-cores)))
 
 (defun mt-file-check (mt-file)
