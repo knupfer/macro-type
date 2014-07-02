@@ -42,7 +42,7 @@
     (setq mt-times (- mt-times 1)))
   (message "Starting multicore calculation..."))
 
-(defun mt-pdflatex (mt-tex-file-name mt-times mt-cores)
+(defun mt-pdflatex (mt-times mt-cores)
   (setq mt-start-count (+ mt-start-count 1))
 
   (async-start
@@ -68,15 +68,15 @@
               (number-to-string (round (/  (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
               "%% from "
               (number-to-string (round mt-original-hboxes)) "pt to "
-              (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) "/" (number-to-string mt-times) " processes returned"))))
-  (while (>= (- mt-start-count mt-receive-count) mt-cores)
-    (sleep-for 1))
-  (when (< mt-start-count mt-times)
-    (mt-pdflatex mt-tex-file-name mt-times mt-cores)))
+              (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) "/" (number-to-string mt-calculations) " processes returned"))
+     (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex mt-calculations mt-forks)))))
+  (when (< (- mt-start-count mt-receive-count) mt-forks)
+    (when (< mt-start-count mt-times)
+      (mt-pdflatex mt-times mt-forks))))
 
 (defun mt-generate-list (mt-start mt-increment mt-times mt-file mt-cores)
   (mt-change-pagesize mt-file mt-start mt-times mt-increment)
-  (mt-pdflatex "foo" mt-times mt-cores))
+  (mt-pdflatex mt-times mt-cores))
 
 (defun mt-macro-type-tex-file (mt-file mt-range mt-times mt-cores)
   (interactive (list (read-file-name
@@ -91,8 +91,10 @@
       (error "You can't choose a directory")
     (setq mt-receive-count 0)
     (setq mt-start-count 0)
+    (setq mt-calculations mt-times)
     (setq mt-original-hboxes nil)
     (setq mt-best-hboxes nil)
+    (setq mt-forks mt-cores)
     (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file mt-cores)))
 
 (defun mt-file-check (mt-file)
