@@ -9,73 +9,89 @@
               (+ mt-overfull-boxes (string-to-number (match-string 1)))))
       mt-overfull-boxes)))
 
-(defun mt-change-pagesize (mt-tex-file-name mt-margin-increase)
-  (with-temp-buffer
-    (insert-file-contents mt-tex-file-name)
-    (re-search-forward
-     "\\\\begin{document}" nil t)
-    (replace-match (concat "
+(defun mt-change-pagesize (mt-tex-file-name
+                           mt-margin-increase
+                           mt-times
+                           mt-increment)
+  (while (> mt-times 0)
+    (with-temp-buffer
+      (insert-file-contents mt-tex-file-name)
+      (re-search-forward
+       "\\\\begin{document}" nil t)
+      (replace-match (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\\\addtolength{\\\\oddsidemargin }{ "
-                           (number-to-string mt-margin-increase) "mm}
+                             (number-to-string
+                              (+ mt-margin-increase
+                                 (* (- mt-times 1) mt-increment))) "mm}
     \\\\addtolength{\\\\evensidemargin}{ "
-                           (number-to-string mt-margin-increase) "mm}
+                                 (number-to-string
+                                  (+ mt-margin-increase
+                                     (* (- mt-times 1) mt-increment)))
+                                 "mm}
     \\\\addtolength{\\\\textwidth     }{"
-                           (number-to-string (* -2 mt-margin-increase)) "mm}
+                                 (number-to-string
+                                  (* -2 (+ mt-margin-increase
+                                           (* (- mt-times 1) mt-increment))))
+                                 "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \\\\begin{document}") nil nil)
-    (write-file "/tmp/tmp.macro-type.tex")))
+      (write-file
+       (concat "/tmp/tmp.macro-type." (number-to-string mt-times) ".tex")))
+    (setq mt-times (- mt-times 1)))
+  (message "Starting multicore calculation..."))
 
-(defun mt-pdflatex (mt-tex-file-name)
-  (with-temp-buffer
-    (shell-command
-     (concat "pdflatex -draftmode -interaction nonstopmode "
-             mt-tex-file-name) t)
-    (buffer-string)))
+(defun mt-pdflatex (mt-tex-file-name mt-times mt-cores)
+  (setq mt-start-count (+ mt-start-count 1))
 
-(defun mt-generate-list (mt-start mt-increment mt-times mt-file)
-  (mt-change-pagesize mt-file mt-start)
-  (if mt-original-hboxes
-      (progn
-        (message
-         (concat "Overfull hboxes reduced by "
-                 (number-to-string
-                  (round
-                   (/ (* 100 (- mt-original-hboxes mt-best-hboxes))
-                      mt-original-hboxes))) "%% from "
-                      (number-to-string (round mt-original-hboxes)) "pt to "
-                      (number-to-string (round mt-best-hboxes)) "pt"))
-        (setq mt-best-hboxes
-              (min mt-best-hboxes (mt-overfullness
-                                   (mt-pdflatex "/tmp/tmp.macro-type.tex")))))
-    (setq mt-original-hboxes (mt-overfullness
-                              (mt-pdflatex "/tmp/tmp.macro-type.tex"))
-          mt-best-hboxes mt-original-hboxes))
-  (message
-   (concat "Overfull hboxes reduced by "
-           (number-to-string
-            (round
-             (/ (* 100 (- mt-original-hboxes mt-best-hboxes))
-                mt-original-hboxes))) "%% from "
-                (number-to-string (round mt-original-hboxes)) "pt to "
-                (number-to-string (round mt-best-hboxes)) "pt"))
-  (when (> mt-times 1) (mt-generate-list (+ mt-start mt-increment)
-                                         mt-increment
-                                         (- mt-times 1)
-                                         mt-file)))
+  (async-start
+   `(lambda ()
+      (with-temp-buffer
+        ;; Pass in the variable environment for smtpmail
+        ,(async-inject-variables "mt-times")
+        (shell-command (concat "pdflatex -draftmode -interaction nonstopmode /tmp/tmp.macro-type." (number-to-string mt-times) ".tex") t)
+        (buffer-string)))
+   (lambda (result)
+     (if mt-best-hboxes
+         (setq mt-best-hboxes
+               (min mt-best-hboxes (mt-overfullness
+                                    result)))
+       (setq mt-original-hboxes (mt-overfullness
+                                 result)
+             mt-best-hboxes mt-original-hboxes))
+     (setq mt-receive-count (+ mt-receive-count 1))
+     (message
+      (concat "Overfull hboxes reduced by "
+              (number-to-string (round (/  (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
+              "%% from "
+              (number-to-string (round mt-original-hboxes)) "pt to "
+              (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) " processes returned"))))
+  (while (> (- mt-start-count mt-receive-count) mt-cores)
+    (sleep-for 1))
+  (when (> mt-times 1)
+    (mt-pdflatex mt-tex-file-name (- mt-times 1) mt-cores)))
 
-(defun mt-macro-type-tex-file (mt-file mt-range mt-times)
+(defun mt-generate-list (mt-start mt-increment mt-times mt-file mt-cores)
+  (mt-change-pagesize mt-file mt-start mt-times mt-increment)
+  (mt-pdflatex "foo" mt-times mt-cores))
+
+(defun mt-macro-type-tex-file (mt-file mt-range mt-times mt-cores)
   (interactive (list (read-file-name
                       "Choose a .tex file:" nil nil t nil 'mt-file-check)
                      (read-number
                       "How many mm may the page shrink:" 0.5)
                      (read-number
-                      "How many times you would like to compile:" 5)))
+                      "How many times you would like to compile:" 5)
+                     (read-number
+                      "How many cores would you like to use:" 4)))
   (if (car (file-attributes mt-file 0))
       (error "You can't choose a directory")
+    (setq mt-receive-count 0)
+    (setq mt-start-count 0)
     (setq mt-original-hboxes nil)
-    (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file)))
+    (setq mt-best-hboxes nil)
+    (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file mt-cores)))
 
 (defun mt-file-check (mt-file)
   (with-temp-buffer
