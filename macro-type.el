@@ -49,8 +49,10 @@
    `(lambda ()
       (with-temp-buffer
         ;; Pass in the variable environment for smtpmail
-        ,(async-inject-variables "mt-times")
-        (shell-command (concat "pdflatex -draftmode -interaction nonstopmode /tmp/tmp.macro-type." (number-to-string mt-times) ".tex") t)
+        ,(async-inject-variables "mt-start-count")
+        (shell-command (concat
+                        "pdflatex -output-directory /tmp -draftmode -interaction nonstopmode /tmp/tmp.macro-type."
+                        (number-to-string mt-start-count) ".tex") t)
         (buffer-string)))
    (lambda (result)
      (if mt-best-hboxes
@@ -66,11 +68,11 @@
               (number-to-string (round (/  (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
               "%% from "
               (number-to-string (round mt-original-hboxes)) "pt to "
-              (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) " processes returned"))))
-  (while (> (- mt-start-count mt-receive-count) mt-cores)
+              (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) "/" (number-to-string mt-times) " processes returned"))))
+  (while (>= (- mt-start-count mt-receive-count) mt-cores)
     (sleep-for 1))
-  (when (> mt-times 1)
-    (mt-pdflatex mt-tex-file-name (- mt-times 1) mt-cores)))
+  (when (< mt-start-count mt-times)
+    (mt-pdflatex mt-tex-file-name mt-times mt-cores)))
 
 (defun mt-generate-list (mt-start mt-increment mt-times mt-file mt-cores)
   (mt-change-pagesize mt-file mt-start mt-times mt-increment)
