@@ -31,8 +31,25 @@
   (with-temp-buffer
     (shell-command (concat "pdflatex -output-directory /tmp -draftmode -interaction nonstopmode -jobname tmp.macro-type " mt-tex-file-name) t)
     (buffer-string)))
+(setq mt-list '())
 
-(progn
-  (mt-change-pagesize "pride-and-prejudice.tex" 0.105)
-  (mt-overfullness (mt-pdflatex "/tmp/tmp.macro-type.tex")))
+(defun mt-generate-list (mt-start mt-increment mt-times mt-file)
+  (mt-change-pagesize mt-file mt-start)
+  (if mt-list
+      (setq mt-list (list mt-list mt-start (mt-overfullness (mt-pdflatex "/tmp/tmp.macro-type.tex"))))
+    (setq mt-list (list mt-start (mt-overfullness (mt-pdflatex "/tmp/tmp.macro-type.tex")))))
+  (when (> mt-times 1) (mt-generate-list (+ mt-start mt-increment) mt-increment (- mt-times 1) mt-file))
+  mt-list)
+
+(defun mt-macro-type-tex-file (mt-file mt-range mt-times)
+  (interactive (list (read-file-name
+                      "Choose a .tex file:")
+                     (read-number
+                      "How many mm may the page shrink:" 0.5)
+                     (read-number
+                      "How many times you would like to compile:" 5)))
+  (setq mt-list '())
+  (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file))
+
+
 
