@@ -43,13 +43,25 @@
 
 (defun mt-macro-type-tex-file (mt-file mt-range mt-times)
   (interactive (list (read-file-name
-                      "Choose a .tex file:")
+                      "Choose a .tex file:" nil nil t nil 'mt-file-check)
                      (read-number
                       "How many mm may the page shrink:" 0.5)
                      (read-number
                       "How many times you would like to compile:" 5)))
-  (setq mt-list '())
-  (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file))
+  (if (car (file-attributes mt-file 0))
+      (error "You can't choose a directory")
+    (setq mt-list '())
+    (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file)))
+
+(defun mt-file-check (mt-file)
+  (with-temp-buffer
+    (insert mt-file)
+    (goto-char (point-min))
+    (re-search-forward "/$\\|\\.tex$" nil t)))
+
+
+
+
 
 
 
