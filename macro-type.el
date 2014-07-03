@@ -122,7 +122,7 @@
                 (car (split-string mt-result-file "/[^/]+\.tex$"))
                 " -interaction nonstopmode "
                 (car (split-string mt-result-file "\.tex$"))
-                ".macro-type.tex > /dev/null"))
+                ".macro-type.tex > /dev/null; rm /tmp/tmp.macro-type.*"))
 
        (message
         (concat (if (= mt-original-hboxes 0) "There are no overfull hboxes"
