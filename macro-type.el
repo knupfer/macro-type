@@ -195,7 +195,7 @@
     (setq mt-best-file 1)
     (setq mt-result-file mt-file)
     (mt-generate-list (- 0 (* 0.25 mt-range))
-                      (/ mt-range (max 1 (- mt-times 2)))
+                      (/ mt-range 1.0 (max 1 (- mt-times 2)))
                       mt-times
                       mt-file
                       mt-cores)))
