@@ -38,6 +38,12 @@
           mt-forks cores
           mt-best-file 1
           mt-result-file file)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (setq mt-begin-buffer (car (split-string
+                                  (buffer-string) "\\\\begin{document}")))
+      (setq mt-end-buffer (car (cdr (split-string
+                                     (buffer-string) "\\\\begin{document}")))))
     (mt-change-pagesize file
                         (- 0 (* 0.25 range))
                         times
@@ -56,18 +62,17 @@
                            mt-increment)
   (while (> mt-times 0)
     (with-temp-buffer
-      (insert-file-contents mt-tex-file-name)
+      (insert mt-begin-buffer)
       (when (> mt-times 1)
         (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
-          (re-search-forward "\\\\begin{document}" nil t)
-          (replace-match (concat "
+          (insert (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
-    \\\\addtolength{\\\\oddsidemargin }{ " (number-to-string size)        "mm}
-    \\\\addtolength{\\\\evensidemargin}{ " (number-to-string size)        "mm}
-    \\\\addtolength{\\\\textwidth     }{"  (number-to-string (* -2 size)) "mm}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-\\\\begin{document}"))))
+    \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
+    \\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}
+    \\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"))))
+      (insert "\n\\begin{document}")
+      (insert mt-end-buffer)
       (write-file (concat "/tmp/tmp.macro-type."
                           (number-to-string mt-times)
                           ".tex")))
@@ -123,7 +128,9 @@
              (car (split-string mt-result-file "/[^/]+\.tex$"))
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
-             ".macro-type.tex > /dev/null; rm /tmp/tmp.macro-type.*"))
+             ".macro-type.tex > /dev/null;"
+             ;; " rm /tmp/tmp.macro-type.*"
+             ))
     (message (mt-minibuffer-message t))))
 
 (defun mt-minibuffer-message (&optional last-run)
