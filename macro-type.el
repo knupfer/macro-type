@@ -1,5 +1,3 @@
-;; TODO: return best version, how to consider over and underfull boxes?
-
 (defun mt-overfullness (mt-log)
   (setq mt-underfull-boxes 0)
   (with-temp-buffer
@@ -64,10 +62,10 @@
         (buffer-string)))
    (lambda (result)
      (if mt-best-hboxes
-         (setq mt-best-hboxes
-               (min mt-best-hboxes (mt-overfullness result))
-               mt-best-badness
-               (min mt-best-badness mt-underfull-boxes))
+         (when (> (+ (* 100 mt-best-hboxes) mt-best-badness)
+                  (+ (* 100 (mt-overfullness result)) mt-underfull-boxes))
+           (setq mt-best-hboxes (mt-overfullness result)
+                 mt-best-badness mt-underfull-boxes))
        (setq mt-original-hboxes (mt-overfullness result)
              mt-best-hboxes mt-original-hboxes
              mt-best-badness mt-underfull-boxes
@@ -76,7 +74,7 @@
      (message
       (concat (if (= mt-original-hboxes 0) "There are no overfull hboxes"
                 (concat "Overfull hboxes reduced by "
-                        (number-to-string (round (/  (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
+                        (number-to-string (round (/ (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
                         "%% from "
                         (number-to-string (round mt-original-hboxes)) "pt to "
                         (number-to-string (round mt-best-hboxes)) "pt"))
