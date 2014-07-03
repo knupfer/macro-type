@@ -41,13 +41,10 @@
           mt-result-file file)
     (with-temp-buffer
       (insert-file-contents file)
-      (setq mt-begin-buffer (car (split-string
-                                  (buffer-string) "\\\\begin{document}")))
-      (setq mt-end-buffer (car (cdr (split-string
-                                     (buffer-string) "\\\\begin{document}")))))
-    (mt-change-pagesize (- 0 (* 0.25 range))
-                        times
-                        (/ range 1.0 (max 1 (- times 2))))
+      (setq mt-begin-buffer
+            (car (split-string (buffer-string) "\\\\begin{document}")))
+      (setq mt-end-buffer
+            (car (cdr (split-string (buffer-string) "\\\\begin{document}")))))
     (mt-pdflatex)))
 
 (defun mt-file-check (file)
@@ -60,17 +57,17 @@
                            mt-times
                            mt-increment)
   (with-temp-buffer
-    (insert mt-begin-buffer)
-    (when (> mt-times 1)
-      (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
-        (insert (concat "
+    (insert (concat mt-begin-buffer
+                    (when (> mt-times 1)
+                      (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
+                        (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
     \\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}
     \\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"))))
-    (insert "\n\\begin{document}")
-    (insert mt-end-buffer)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")))
+                    "\n\\begin{document}"
+                    mt-end-buffer))
     (write-file (concat "/tmp/tmp.macro-type."
                         (number-to-string mt-times)
                         ".tex"))))
