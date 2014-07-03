@@ -71,7 +71,7 @@
     (setq mt-times (- mt-times 1)))
   (message "Starting multicore calculation..."))
 
-(defun mt-pdflatex (mt-cores)
+(defun mt-pdflatex ()
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
    `(lambda ()
@@ -87,7 +87,8 @@
          (when (> (+ (* 100 mt-best-hboxes) mt-best-badness)
                   (+ (* 100 (mt-overfullness result)) mt-underfull-boxes))
            (setq mt-best-hboxes (mt-overfullness result)
-                 mt-best-badness mt-underfull-boxes))
+                 mt-best-badness mt-underfull-boxes
+                 mt-best-file mt-start-count))
        (setq mt-original-hboxes (mt-overfullness result)
              mt-best-hboxes mt-original-hboxes
              mt-best-badness mt-underfull-boxes
@@ -109,15 +110,42 @@
                         (number-to-string (round mt-best-badness))))
               "  ||  "
               (number-to-string mt-receive-count) "/" (number-to-string mt-calculations) " processes returned"))
-     (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex mt-forks)))))
+     (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex)))
+     (when (= mt-receive-count mt-calculations)
+       (shell-command
+        (concat "mv /tmp/tmp.macro-type."
+                (number-to-string mt-best-file)
+                ".tex " (car (split-string mt-result-file "\.tex$"))
+                ".macro-type.tex; pdflatex -output-directory " (car (split-string mt-result-file "/[^/]+\.tex$"))
+                " -interaction nonstopmode "
+                (car (split-string mt-result-file "\.tex$")) ".macro-type.tex > /dev/null"))
+
+       (message
+        (concat (if (= mt-original-hboxes 0) "There are no overfull hboxes"
+                  (concat "Overfull hboxes reduced by "
+                          (number-to-string (round (/ (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
+                          "%% from "
+                          (number-to-string (round mt-original-hboxes)) "pt to "
+                          (number-to-string (round mt-best-hboxes)) "pt"))
+                "  ||  "
+                (if (= mt-original-badness 0) "There are no underfull hboxes"
+                  (concat "Underfull hboxes reduced by "
+                          (number-to-string (round (/  (* 100 (- mt-original-badness mt-best-badness)) mt-original-badness)))
+                          "%% from "
+                          (number-to-string (round mt-original-badness)) " to "
+                          (number-to-string (round mt-best-badness))))
+                "  ||  "
+                "All " (number-to-string mt-calculations) " processes returned
+    output: "
+                (car (split-string mt-result-file "\.tex$")) ".macro-type.*")))))
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations)
              (> mt-start-count 1))
-    (mt-pdflatex mt-forks)))
+    (mt-pdflatex)))
 
 (defun mt-generate-list (mt-start mt-increment mt-times mt-file mt-cores)
   (mt-change-pagesize mt-file mt-start mt-times mt-increment)
-  (mt-pdflatex mt-cores))
+  (mt-pdflatex))
 
 (defun mt-macro-type-tex-file (mt-file mt-range mt-times mt-cores)
   (interactive (list (read-file-name
@@ -139,6 +167,8 @@
     (setq mt-underfull-boxes 0)
     (setq mt-original-badness nil)
     (setq mt-best-badness nil)
+    (setq mt-best-file 1)
+    (setq mt-result-file mt-file)
     (mt-generate-list (- 0 (* 0.25 mt-range)) (/ mt-range (max 1 (- mt-times 2))) mt-times mt-file mt-cores)))
 
 (defun mt-file-check (mt-file)
