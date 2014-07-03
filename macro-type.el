@@ -80,14 +80,13 @@
   (async-start
    `(lambda ()
       (with-temp-buffer
-        ,(async-inject-variables "mt-start-count")
         (shell-command
          (concat "pdflatex"
                  " -output-directory /tmp"
                  " -draftmode"
                  " -interaction nonstopmode"
                  " /tmp/tmp.macro-type."
-                 (number-to-string mt-start-count)
+                 (number-to-string ,mt-start-count)
                  ".tex")
          t)
         (buffer-string)))
@@ -125,7 +124,7 @@
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
              ".macro-type.tex > /dev/null;"
-             ;; " rm /tmp/tmp.macro-type.*"
+             " rm /tmp/tmp.macro-type.*"
              ))
     (message (mt-minibuffer-message t))))
 
