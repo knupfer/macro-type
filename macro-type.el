@@ -20,22 +20,21 @@
 
 
 ;;; Code:
-(defun mt-overfullness (mt-log)
+(defun mt-evaluate-hboxes (mt-log)
   (setq mt-underfull-boxes 0)
+  (setq mt-overfull-boxes 0)
   (with-temp-buffer
-    (let ((mt-overfull-boxes 0))
-      (insert mt-log)
-      (goto-char (point-min))
-      (while (re-search-forward
-              "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*" nil t)
-        (setq mt-overfull-boxes
-              (+ mt-overfull-boxes (string-to-number (match-string 1)))))
-      (goto-char (point-min))
-      (while (re-search-forward
-              "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*" nil t)
-        (setq mt-underfull-boxes
-              (+ mt-underfull-boxes (string-to-number (match-string 1)))))
-      mt-overfull-boxes)))
+    (insert mt-log)
+    (goto-char (point-min))
+    (while (re-search-forward
+            "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*" nil t)
+      (setq mt-overfull-boxes
+            (+ mt-overfull-boxes (string-to-number (match-string 1)))))
+    (goto-char (point-min))
+    (while (re-search-forward
+            "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*" nil t)
+      (setq mt-underfull-boxes
+            (+ mt-underfull-boxes (string-to-number (match-string 1)))))))
 
 (defun mt-change-pagesize (mt-tex-file-name
                            mt-margin-increase
@@ -44,7 +43,7 @@
   (while (> mt-times 0)
     (with-temp-buffer
       (insert-file-contents mt-tex-file-name)
-      (when (not (= mt-times 1))
+      (when (> mt-times 1)
         (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
           (re-search-forward "\\\\begin{document}" nil t)
           (replace-match (concat "
@@ -74,13 +73,13 @@
           (number-to-string mt-start-count) ".tex") t)
         (buffer-string)))
    (lambda (result)
-     (if mt-best-hboxes
-         (when (> (+ (* 100 mt-best-hboxes) mt-best-badness)
-                  (+ (* 100 (mt-overfullness result)) mt-underfull-boxes))
-           (setq mt-best-hboxes (mt-overfullness result)
-                 mt-best-badness mt-underfull-boxes
-                 mt-best-file mt-start-count))
-       (setq mt-original-hboxes (mt-overfullness result)
+     (mt-evaluate-hboxes result)
+     (if mt-best-hboxes (when (> (+ (* 100 mt-best-hboxes) mt-best-badness)
+                                 (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
+                          (setq mt-best-hboxes mt-overfull-boxes
+                                mt-best-badness mt-underfull-boxes
+                                mt-best-file mt-start-count))
+       (setq mt-original-hboxes mt-overfull-boxes
              mt-best-hboxes mt-original-hboxes
              mt-best-badness mt-underfull-boxes
              mt-original-badness mt-underfull-boxes))
@@ -113,7 +112,7 @@
      (when (< (- mt-start-count mt-receive-count) mt-forks)
        (when (< mt-start-count mt-calculations)
          (mt-pdflatex)))
-     (when (= mt-receive-count mt-calculations)
+     (when (>= mt-receive-count mt-calculations)
        (shell-command
         (concat "cp /tmp/tmp.macro-type."
                 (number-to-string mt-best-file)
