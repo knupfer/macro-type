@@ -74,11 +74,12 @@
         (buffer-string)))
    (lambda (result)
      (mt-evaluate-hboxes result)
-     (if mt-best-hboxes (when (> (+ (* 100 mt-best-hboxes) mt-best-badness)
-                                 (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
-                          (setq mt-best-hboxes mt-overfull-boxes
-                                mt-best-badness mt-underfull-boxes
-                                mt-best-file mt-start-count))
+     (if mt-best-hboxes
+         (when (> (+ (* 100 mt-best-hboxes) mt-best-badness)
+                  (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
+           (setq mt-best-hboxes mt-overfull-boxes
+                 mt-best-badness mt-underfull-boxes
+                 mt-best-file mt-start-count))
        (setq mt-original-hboxes mt-overfull-boxes
              mt-best-hboxes mt-original-hboxes
              mt-best-badness mt-underfull-boxes
@@ -156,7 +157,7 @@
              (> mt-start-count 1))
     (mt-pdflatex)))
 
-(defun mt-macro-type-tex-file (mt-file mt-range mt-times mt-cores)
+(defun mt-macro-type-tex-file (file range mt-times cores)
   (interactive (list (read-file-name
                       "Choose a .tex file:" nil nil t nil 'mt-file-check)
                      (read-number
@@ -165,27 +166,27 @@
                       "How many times you would like to compile:" 25)
                      (read-number
                       "How many cores would you like to use:" 4)))
-  (if (car (file-attributes mt-file 0))
+  (if (car (file-attributes file 0))
       (error "You can't choose a directory")
     (setq mt-receive-count 0
           mt-start-count 0
           mt-calculations mt-times
           mt-original-hboxes nil
           mt-best-hboxes nil
-          mt-forks mt-cores
+          mt-forks cores
           mt-underfull-boxes 0
           mt-original-badness nil
           mt-best-badness nil
           mt-best-file 1
-          mt-result-file mt-file)
-    (mt-change-pagesize mt-file
-                        (- 0 (* 0.25 mt-range))
+          mt-result-file file)
+    (mt-change-pagesize file
+                        (- 0 (* 0.25 range))
                         mt-times
-                        (/ mt-range 1.0 (max 1 (- mt-times 2))))
+                        (/ range 1.0 (max 1 (- mt-times 2))))
     (mt-pdflatex)))
 
-(defun mt-file-check (mt-file)
+(defun mt-file-check (file)
   (with-temp-buffer
-    (insert mt-file)
+    (insert file)
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
