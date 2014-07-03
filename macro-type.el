@@ -45,30 +45,19 @@
     (with-temp-buffer
       (insert-file-contents mt-tex-file-name)
       (when (not (= mt-times 1))
-        (re-search-forward
-         "\\\\begin{document}" nil t)
-        (replace-match (concat "
+        (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
+          (re-search-forward "\\\\begin{document}" nil t)
+          (replace-match (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
-    \\\\addtolength{\\\\oddsidemargin }{ "
-                               (number-to-string
-                                (+ mt-margin-increase
-                                   (* (- mt-times 2) mt-increment))) "mm}
-    \\\\addtolength{\\\\evensidemargin}{ "
-                                   (number-to-string
-                                    (+ mt-margin-increase
-                                       (* (- mt-times 2) mt-increment)))
-                                   "mm}
-    \\\\addtolength{\\\\textwidth     }{"
-                                   (number-to-string
-                                    (* -2
-                                       (+ mt-margin-increase
-                                          (* (- mt-times 2) mt-increment))))
-                                   "mm}
+    \\\\addtolength{\\\\oddsidemargin }{ " (number-to-string size)        "mm}
+    \\\\addtolength{\\\\evensidemargin}{ " (number-to-string size)        "mm}
+    \\\\addtolength{\\\\textwidth     }{"  (number-to-string (* -2 size)) "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\\\\begin{document}") nil nil))
-      (write-file
-       (concat "/tmp/tmp.macro-type." (number-to-string mt-times) ".tex")))
+\\\\begin{document}"))))
+      (write-file (concat "/tmp/tmp.macro-type."
+                          (number-to-string mt-times)
+                          ".tex")))
     (setq mt-times (- mt-times 1)))
   (message "Starting multicore calculation..."))
 
@@ -126,7 +115,7 @@
          (mt-pdflatex)))
      (when (= mt-receive-count mt-calculations)
        (shell-command
-        (concat "mv /tmp/tmp.macro-type."
+        (concat "cp /tmp/tmp.macro-type."
                 (number-to-string mt-best-file)
                 ".tex " (car (split-string mt-result-file "\.tex$"))
                 ".macro-type.tex; pdflatex -output-directory "
@@ -168,7 +157,7 @@
              (> mt-start-count 1))
     (mt-pdflatex)))
 
-(defun mt-generate-list (mt-start mt-increment mt-times mt-file mt-cores)
+(defun mt-generate-list (mt-file mt-start mt-times mt-increment mt-cores)
   (mt-change-pagesize mt-file mt-start mt-times mt-increment)
   (mt-pdflatex))
 
@@ -194,10 +183,10 @@
     (setq mt-best-badness nil)
     (setq mt-best-file 1)
     (setq mt-result-file mt-file)
-    (mt-generate-list (- 0 (* 0.25 mt-range))
-                      (/ mt-range 1.0 (max 1 (- mt-times 2)))
+    (mt-generate-list mt-file
+                      (- 0 (* 0.25 mt-range))
                       mt-times
-                      mt-file
+                      (/ mt-range 1.0 (max 1 (- mt-times 2)))
                       mt-cores)))
 
 (defun mt-file-check (mt-file)
