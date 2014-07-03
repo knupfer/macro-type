@@ -1,4 +1,4 @@
-;; TODO: accept 0 underfull and 0 overfull, implement underfull
+;; TODO: return best version, how to consider over and underfull boxes?
 
 (defun mt-overfullness (mt-log)
   (setq mt-underfull-boxes 0)
@@ -74,11 +74,21 @@
              mt-original-badness mt-underfull-boxes))
      (setq mt-receive-count (+ mt-receive-count 1))
      (message
-      (concat "Overfull hboxes reduced by "
-              (number-to-string (round (/  (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
-              "%% from "
-              (number-to-string (round mt-original-hboxes)) "pt to "
-              (number-to-string (round mt-best-hboxes)) "pt         " (number-to-string mt-receive-count) "/" (number-to-string mt-calculations) " processes returned"))
+      (concat (if (= mt-original-hboxes 0) "There are no overfull hboxes"
+                (concat "Overfull hboxes reduced by "
+                        (number-to-string (round (/  (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
+                        "%% from "
+                        (number-to-string (round mt-original-hboxes)) "pt to "
+                        (number-to-string (round mt-best-hboxes)) "pt"))
+              "  ||  "
+              (if (= mt-original-badness 0) "There are no underfull hboxes"
+                (concat "Underfull hboxes reduced by "
+                        (number-to-string (round (/  (* 100 (- mt-original-badness mt-best-badness)) mt-original-badness)))
+                        "%% from "
+                        (number-to-string (round mt-original-badness)) " to "
+                        (number-to-string (round mt-best-badness))))
+              "  ||  "
+              (number-to-string mt-receive-count) "/" (number-to-string mt-calculations) " processes returned"))
      (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex mt-forks)))))
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations)
