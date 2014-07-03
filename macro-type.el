@@ -24,27 +24,28 @@
   (while (> mt-times 0)
     (with-temp-buffer
       (insert-file-contents mt-tex-file-name)
-      (re-search-forward
-       "\\\\begin{document}" nil t)
-      (replace-match (concat "
+      (when (not (= mt-times 1))
+        (re-search-forward
+         "\\\\begin{document}" nil t)
+        (replace-match (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\\\addtolength{\\\\oddsidemargin }{ "
-                             (number-to-string
-                              (+ mt-margin-increase
-                                 (* (- mt-times 1) mt-increment))) "mm}
+                               (number-to-string
+                                (+ mt-margin-increase
+                                   (* (- mt-times 2) mt-increment))) "mm}
     \\\\addtolength{\\\\evensidemargin}{ "
-                                 (number-to-string
-                                  (+ mt-margin-increase
-                                     (* (- mt-times 1) mt-increment)))
-                                 "mm}
+                                   (number-to-string
+                                    (+ mt-margin-increase
+                                       (* (- mt-times 2) mt-increment)))
+                                   "mm}
     \\\\addtolength{\\\\textwidth     }{"
-                                 (number-to-string
-                                  (* -2 (+ mt-margin-increase
-                                           (* (- mt-times 1) mt-increment))))
-                                 "mm}
+                                   (number-to-string
+                                    (* -2 (+ mt-margin-increase
+                                             (* (- mt-times 2) mt-increment))))
+                                   "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\\\\begin{document}") nil nil)
+\\\\begin{document}") nil nil))
       (write-file
        (concat "/tmp/tmp.macro-type." (number-to-string mt-times) ".tex")))
     (setq mt-times (- mt-times 1)))
@@ -52,7 +53,6 @@
 
 (defun mt-pdflatex (mt-cores)
   (setq mt-start-count (+ mt-start-count 1))
-
   (async-start
    `(lambda ()
       (with-temp-buffer
@@ -65,11 +65,13 @@
    (lambda (result)
      (if mt-best-hboxes
          (setq mt-best-hboxes
-               (min mt-best-hboxes (mt-overfullness
-                                    result)))
-       (setq mt-original-hboxes (mt-overfullness
-                                 result)
-             mt-best-hboxes mt-original-hboxes))
+               (min mt-best-hboxes (mt-overfullness result))
+               mt-best-badness
+               (min mt-best-badness mt-underfull-boxes))
+       (setq mt-original-hboxes (mt-overfullness result)
+             mt-best-hboxes mt-original-hboxes
+             mt-best-badness mt-underfull-boxes
+             mt-original-badness mt-underfull-boxes))
      (setq mt-receive-count (+ mt-receive-count 1))
      (message
       (concat "Overfull hboxes reduced by "
@@ -93,7 +95,7 @@
                      (read-number
                       "How many mm may the page shrink:" 0.5)
                      (read-number
-                      "How many times you would like to compile:" 5)
+                      "How many times you would like to compile:" 25)
                      (read-number
                       "How many cores would you like to use:" 4)))
   (if (car (file-attributes mt-file 0))
@@ -107,15 +109,10 @@
     (setq mt-underfull-boxes 0)
     (setq mt-original-badness nil)
     (setq mt-best-badness nil)
-    (mt-generate-list 0 (/ mt-range mt-times) mt-times mt-file mt-cores)))
+    (mt-generate-list (- 0 (* 0.25 mt-range)) (/ mt-range (max 1 (- mt-times 2))) mt-times mt-file mt-cores)))
 
 (defun mt-file-check (mt-file)
   (with-temp-buffer
     (insert mt-file)
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
-
-
-
-
-
