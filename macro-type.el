@@ -157,10 +157,6 @@
              (> mt-start-count 1))
     (mt-pdflatex)))
 
-(defun mt-generate-list (mt-file mt-start mt-times mt-increment mt-cores)
-  (mt-change-pagesize mt-file mt-start mt-times mt-increment)
-  (mt-pdflatex))
-
 (defun mt-macro-type-tex-file (mt-file mt-range mt-times mt-cores)
   (interactive (list (read-file-name
                       "Choose a .tex file:" nil nil t nil 'mt-file-check)
@@ -172,22 +168,22 @@
                       "How many cores would you like to use:" 4)))
   (if (car (file-attributes mt-file 0))
       (error "You can't choose a directory")
-    (setq mt-receive-count 0)
-    (setq mt-start-count 0)
-    (setq mt-calculations mt-times)
-    (setq mt-original-hboxes nil)
-    (setq mt-best-hboxes nil)
-    (setq mt-forks mt-cores)
-    (setq mt-underfull-boxes 0)
-    (setq mt-original-badness nil)
-    (setq mt-best-badness nil)
-    (setq mt-best-file 1)
-    (setq mt-result-file mt-file)
-    (mt-generate-list mt-file
-                      (- 0 (* 0.25 mt-range))
-                      mt-times
-                      (/ mt-range 1.0 (max 1 (- mt-times 2)))
-                      mt-cores)))
+    (setq mt-receive-count 0
+          mt-start-count 0
+          mt-calculations mt-times
+          mt-original-hboxes nil
+          mt-best-hboxes nil
+          mt-forks mt-cores
+          mt-underfull-boxes 0
+          mt-original-badness nil
+          mt-best-badness nil
+          mt-best-file 1
+          mt-result-file mt-file)
+    (mt-change-pagesize mt-file
+                        (- 0 (* 0.25 mt-range))
+                        mt-times
+                        (/ mt-range 1.0 (max 1 (- mt-times 2))))
+    (mt-pdflatex)))
 
 (defun mt-file-check (mt-file)
   (with-temp-buffer
