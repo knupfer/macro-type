@@ -60,8 +60,9 @@
                                    "mm}
     \\\\addtolength{\\\\textwidth     }{"
                                    (number-to-string
-                                    (* -2 (+ mt-margin-increase
-                                             (* (- mt-times 2) mt-increment))))
+                                    (* -2
+                                       (+ mt-margin-increase
+                                          (* (- mt-times 2) mt-increment))))
                                    "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -78,9 +79,10 @@
       (with-temp-buffer
         ;; Pass in the variable environment for smtpmail
         ,(async-inject-variables "mt-start-count")
-        (shell-command (concat
-                        "pdflatex -output-directory /tmp -draftmode -interaction nonstopmode /tmp/tmp.macro-type."
-                        (number-to-string mt-start-count) ".tex") t)
+        (shell-command
+         (concat
+          "pdflatex -output-directory /tmp -draftmode -interaction nonstopmode /tmp/tmp.macro-type."
+          (number-to-string mt-start-count) ".tex") t)
         (buffer-string)))
    (lambda (result)
      (if mt-best-hboxes
@@ -97,47 +99,70 @@
      (message
       (concat (if (= mt-original-hboxes 0) "There are no overfull hboxes"
                 (concat "Overfull hboxes reduced by "
-                        (number-to-string (round (/ (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
+                        (number-to-string
+                         (round
+                          (/
+                           (* 100 (- mt-original-hboxes mt-best-hboxes))
+                           mt-original-hboxes)))
                         "%% from "
                         (number-to-string (round mt-original-hboxes)) "pt to "
                         (number-to-string (round mt-best-hboxes)) "pt"))
               "  ||  "
               (if (= mt-original-badness 0) "There are no underfull hboxes"
                 (concat "Underfull hboxes reduced by "
-                        (number-to-string (round (/  (* 100 (- mt-original-badness mt-best-badness)) mt-original-badness)))
+                        (number-to-string
+                         (round
+                          (/
+                           (* 100 (- mt-original-badness mt-best-badness))
+                           mt-original-badness)))
                         "%% from "
                         (number-to-string (round mt-original-badness)) " to "
                         (number-to-string (round mt-best-badness))))
               "  ||  "
-              (number-to-string mt-receive-count) "/" (number-to-string mt-calculations) " processes returned"))
-     (when (< (- mt-start-count mt-receive-count) mt-forks) (when (< mt-start-count mt-calculations) (mt-pdflatex)))
+              (number-to-string mt-receive-count) "/"
+              (number-to-string mt-calculations) " processes returned"))
+     (when (< (- mt-start-count mt-receive-count) mt-forks)
+       (when (< mt-start-count mt-calculations)
+         (mt-pdflatex)))
      (when (= mt-receive-count mt-calculations)
        (shell-command
         (concat "mv /tmp/tmp.macro-type."
                 (number-to-string mt-best-file)
                 ".tex " (car (split-string mt-result-file "\.tex$"))
-                ".macro-type.tex; pdflatex -output-directory " (car (split-string mt-result-file "/[^/]+\.tex$"))
+                ".macro-type.tex; pdflatex -output-directory "
+                (car (split-string mt-result-file "/[^/]+\.tex$"))
                 " -interaction nonstopmode "
-                (car (split-string mt-result-file "\.tex$")) ".macro-type.tex > /dev/null"))
+                (car (split-string mt-result-file "\.tex$"))
+                ".macro-type.tex > /dev/null"))
 
        (message
         (concat (if (= mt-original-hboxes 0) "There are no overfull hboxes"
                   (concat "Overfull hboxes reduced by "
-                          (number-to-string (round (/ (* 100 (- mt-original-hboxes mt-best-hboxes)) mt-original-hboxes)))
+                          (number-to-string
+                           (round
+                            (/ (* 100 (- mt-original-hboxes mt-best-hboxes))
+                               mt-original-hboxes)))
                           "%% from "
-                          (number-to-string (round mt-original-hboxes)) "pt to "
+                          (number-to-string (round mt-original-hboxes))
+                          "pt to "
                           (number-to-string (round mt-best-hboxes)) "pt"))
                 "  ||  "
                 (if (= mt-original-badness 0) "There are no underfull hboxes"
                   (concat "Underfull hboxes reduced by "
-                          (number-to-string (round (/  (* 100 (- mt-original-badness mt-best-badness)) mt-original-badness)))
+                          (number-to-string
+                           (round
+                            (/
+                             (* 100 (- mt-original-badness mt-best-badness))
+                             mt-original-badness)))
                           "%% from "
-                          (number-to-string (round mt-original-badness)) " to "
+                          (number-to-string (round mt-original-badness))
+                          " to "
                           (number-to-string (round mt-best-badness))))
                 "  ||  "
                 "All " (number-to-string mt-calculations) " processes returned
     output: "
-                (car (split-string mt-result-file "\.tex$")) ".macro-type.*")))))
+                (car (split-string mt-result-file "\.tex$"))
+                ".macro-type.*")))))
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations)
              (> mt-start-count 1))
@@ -169,7 +194,11 @@
     (setq mt-best-badness nil)
     (setq mt-best-file 1)
     (setq mt-result-file mt-file)
-    (mt-generate-list (- 0 (* 0.25 mt-range)) (/ mt-range (max 1 (- mt-times 2))) mt-times mt-file mt-cores)))
+    (mt-generate-list (- 0 (* 0.25 mt-range))
+                      (/ mt-range (max 1 (- mt-times 2)))
+                      mt-times
+                      mt-file
+                      mt-cores)))
 
 (defun mt-file-check (mt-file)
   (with-temp-buffer
