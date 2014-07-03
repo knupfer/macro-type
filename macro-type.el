@@ -36,6 +36,7 @@
           mt-start-count 0
           mt-calculations times
           mt-forks cores
+          mt-range range
           mt-best-file 1
           mt-result-file file)
     (with-temp-buffer
@@ -44,8 +45,7 @@
                                   (buffer-string) "\\\\begin{document}")))
       (setq mt-end-buffer (car (cdr (split-string
                                      (buffer-string) "\\\\begin{document}")))))
-    (mt-change-pagesize file
-                        (- 0 (* 0.25 range))
+    (mt-change-pagesize (- 0 (* 0.25 range))
                         times
                         (/ range 1.0 (max 1 (- times 2))))
     (mt-pdflatex)))
@@ -56,31 +56,30 @@
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
-(defun mt-change-pagesize (mt-tex-file-name
-                           mt-margin-increase
+(defun mt-change-pagesize (mt-margin-increase
                            mt-times
                            mt-increment)
-  (while (> mt-times 0)
-    (with-temp-buffer
-      (insert mt-begin-buffer)
-      (when (> mt-times 1)
-        (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
-          (insert (concat "
+  (with-temp-buffer
+    (insert mt-begin-buffer)
+    (when (> mt-times 1)
+      (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
+        (insert (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
     \\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}
     \\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"))))
-      (insert "\n\\begin{document}")
-      (insert mt-end-buffer)
-      (write-file (concat "/tmp/tmp.macro-type."
-                          (number-to-string mt-times)
-                          ".tex")))
-    (setq mt-times (- mt-times 1)))
-  (message "Starting multicore calculation..."))
+    (insert "\n\\begin{document}")
+    (insert mt-end-buffer)
+    (write-file (concat "/tmp/tmp.macro-type."
+                        (number-to-string mt-times)
+                        ".tex"))))
 
 (defun mt-pdflatex ()
   (setq mt-start-count (+ mt-start-count 1))
+  (mt-change-pagesize (- 0 (* 0.25 mt-range))
+                      mt-start-count
+                      (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
   (async-start
    `(lambda ()
       (with-temp-buffer
