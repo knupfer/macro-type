@@ -39,13 +39,8 @@
           mt-range range
           mt-best-file 1
           mt-result-file file
-          mt-last-message nil)
-    (with-temp-buffer
-      (insert-file-contents file)
-      (setq mt-begin-buffer
-            (car (split-string (buffer-string) "\\\\begin{document}")))
-      (setq mt-end-buffer
-            (car (cdr (split-string (buffer-string) "\\\\begin{document}")))))
+          mt-last-message nil
+          mt-file file)
     (mt-pdflatex)))
 
 (defun mt-file-check (file)
@@ -54,35 +49,35 @@
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
-(defun mt-change-pagesize (mt-margin-increase
-                           mt-times
-                           mt-increment)
-  (with-temp-buffer
-    (insert (concat mt-begin-buffer
-                    (when (> mt-times 1)
-                      (let ((size (+ mt-margin-increase
-                                     (* (- mt-times 2) mt-increment))))
-                        (concat "
+(defun mt-pdflatex ()
+  (setq mt-start-count (+ mt-start-count 1))
+  (async-start
+   `(lambda ()
+      (with-temp-buffer
+        (insert-file-contents ,mt-file)
+        (setq mt-begin-buffer
+              (car (split-string (buffer-string) "\\\\begin{document}")))
+        (setq mt-end-buffer
+              (car (cdr (split-string (buffer-string) "\\\\begin{document}")))))
+      (with-temp-buffer
+        (setq mt-margin-increase (- 0 (* 0.24 ,mt-range))
+              mt-times ,mt-start-count
+              mt-increment (/ ,mt-range 1.0 (max 1 (- ,mt-calculations 2))))
+        (insert (concat mt-begin-buffer
+                        (when (> mt-times 1)
+                          (let ((size (+ mt-margin-increase
+                                         (* (- mt-times 2) mt-increment))))
+                            (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
     \\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}
     \\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")))
-                    "\n\\begin{document}"
-                    mt-end-buffer))
-    (shell-command-on-region (point-min) (point-max)
-                             (concat "cat > /tmp/tmp.macro-type."
-                                     (number-to-string mt-times)
-                                     ".tex") nil nil)
-    (message mt-last-message)))
-
-(defun mt-pdflatex ()
-  (setq mt-start-count (+ mt-start-count 1))
-  (mt-change-pagesize (- 0 (* 0.25 mt-range))
-                      mt-start-count
-                      (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
-  (async-start
-   `(lambda ()
+                        "\n\\begin{document}"
+                        mt-end-buffer))
+        (write-file (concat "/tmp/tmp.macro-type."
+                            (number-to-string mt-times)
+                            ".tex")))
       (with-temp-buffer
         (shell-command
          (concat "pdflatex"
