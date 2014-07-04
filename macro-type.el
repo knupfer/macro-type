@@ -23,13 +23,13 @@
 
 (defun mt-macro-type-tex-file (file range times cores)
   (interactive (list (read-file-name
-                      "Choose a .tex file:" nil nil t nil 'mt-file-check)
+                      "Choose a .tex file: " nil nil t nil 'mt-file-check)
                      (read-number
-                      "How many mm may the page shrink:" 0.5)
+                      "How many mm may the page shrink: " 0.5)
                      (read-number
-                      "How many times you would like to compile:" 25)
+                      "How many times you would like to compile: " 25)
                      (read-number
-                      "How many cores would you like to use:" 4)))
+                      "How many cores would you like to use: " 4)))
   (if (car (file-attributes file 0))
       (error "You can't choose a directory")
     (setq mt-receive-count 0
@@ -60,7 +60,8 @@
   (with-temp-buffer
     (insert (concat mt-begin-buffer
                     (when (> mt-times 1)
-                      (let ((size (+ mt-margin-increase (* (- mt-times 2) mt-increment))))
+                      (let ((size (+ mt-margin-increase
+                                     (* (- mt-times 2) mt-increment))))
                         (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
@@ -156,7 +157,7 @@
     (number-to-string mt-receive-count) "/"
     (number-to-string mt-calculations) " compiled"
     (when last-run (concat "
-    output:  " (car (split-string mt-result-file "\.tex$"))
+    output: " (car (split-string mt-result-file "\.tex$"))
     ".macro-type.*")))))
 
 (defun mt-evaluate-boxes (mt-log)
