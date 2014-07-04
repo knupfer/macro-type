@@ -66,36 +66,35 @@
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
    `(lambda ()
-      (with-temp-buffer
-        (setq mt-margin-increase (- 0 (* 0.24 ,mt-range))
-              mt-times ,mt-start-count
-              mt-increment (/ ,mt-range 1.0 (max 1 (- ,mt-calculations 2))))
-        (insert-file-contents "/tmp/tmp.macro-type.begin")
-        (goto-char (point-max))
-        (insert (concat
-                 (when (> mt-times 1)
-                   (let ((size (+ mt-margin-increase
-                                  (* (- mt-times 2) mt-increment))))
-                     (concat "
+      (setq mt-margin-increase (- 0 (* 0.24 ,mt-range))
+            mt-times ,mt-start-count
+            mt-increment (/ ,mt-range 1.0 (max 1 (- ,mt-calculations 2))))
+      (shell-command (concat "echo \""
+                             (when (> mt-times 1)
+                               (let ((size (+ mt-margin-increase
+                                              (* (- mt-times 2) mt-increment))))
+                                 (concat "
 %%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
     \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
     \\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}
     \\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")))
-                 "\n\\begin{document}"
-                 ))
-        (insert-file-contents "/tmp/tmp.macro-type.end")
-        (write-file (concat "/tmp/tmp.macro-type."
-                            (number-to-string mt-times)
-                            ".tex")))
+                             "\n \\begin{document} \" > "
+                             (concat "/tmp/tmp.macro-type.header."
+                                     (number-to-string mt-times)
+                                     ".tex") ))
       (shell-command-to-string
-       (concat "pdflatex"
+       (concat "cat"
+               " /tmp/tmp.macro-type.begin"
+               " /tmp/tmp.macro-type.header."
+               (number-to-string ,mt-start-count) ".tex"
+               " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
+               (number-to-string ,mt-start-count)
+               ".tex ; pdflatex"
                " -output-directory /tmp"
                " -draftmode"
-               " -interaction nonstopmode"
-               " /tmp/tmp.macro-type."
-               (number-to-string ,mt-start-count)
-               ".tex")))
+               " -interaction nonstopmode /tmp/tmp.macro-type."
+               (number-to-string ,mt-start-count) ".tex")))
    'mt-evaluate-result)
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations)
@@ -160,10 +159,7 @@
     (number-to-string mt-calculations) " compiled"
     (when last-run (concat "
     output: " (car (split-string mt-result-file "\.tex$"))
-    ".macro-type.*" (format-time-string "  %s %3N" (time-since mt-benchmark)))))))
-;; 37.9
-;; 39
-;; 38.8
+    ".macro-type.*  calculated in " (format-time-string "%s" (time-since mt-benchmark)) "s")))))
 
 (defun mt-evaluate-boxes (mt-log)
   (setq mt-underfull-boxes 0)
@@ -180,6 +176,3 @@
             "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*" nil t)
       (setq mt-underfull-boxes
             (+ mt-underfull-boxes (string-to-number (match-string 1)))))))
-
-
-
