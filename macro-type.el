@@ -39,12 +39,10 @@
           mt-range range
           mt-best-file 1
           mt-result-file file
-          mt-last-message nil
-          mt-file file
           mt-benchmark (current-time))
 
     (with-temp-buffer
-      (insert-file-contents mt-file)
+      (insert-file-contents file)
       (let ((this-buffer (buffer-string)))
         (with-temp-buffer
           (insert
@@ -66,9 +64,10 @@
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
    `(lambda ()
-      (setq mt-margin-increase (- 0 (* 0.24 ,mt-range))
+      (setq mt-range ,mt-range
+            mt-margin-increase (- 0 (* 0.5 mt-range))
             mt-times ,mt-start-count
-            mt-increment (/ ,mt-range 1.0 (max 1 (- ,mt-calculations 2))))
+            mt-increment (/ mt-range 1.0 (max 1 (- ,mt-calculations 2))))
       (shell-command (concat "echo \""
                              (when (> mt-times 1)
                                (let ((size (+ mt-margin-increase
@@ -82,7 +81,7 @@
                              "\n \\begin{document} \" > "
                              (concat "/tmp/tmp.macro-type.header."
                                      (number-to-string mt-times)
-                                     ".tex") ))
+                                     ".tex")))
       (shell-command-to-string
        (concat "cat"
                " /tmp/tmp.macro-type.begin"
@@ -129,37 +128,36 @@
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
              ".macro-type.tex > /dev/null;"
-             " rm /tmp/tmp.macro-type.*"
-             ))
+             " rm /tmp/tmp.macro-type.*"))
     (message (mt-minibuffer-message t))))
 
 (defun mt-minibuffer-message (&optional last-run)
-  (setq
-   mt-last-message
-   (concat
-    (if (= mt-init-overfull-boxes 0) "No overfull hboxes"
-      (concat "Overfull hboxes reduced by "
-              (number-to-string
-               (round
-                (/ (* 100 (- mt-init-overfull-boxes mt-best-overfull-boxes))
-                   mt-init-overfull-boxes))) "%% from "
-                   (number-to-string (round mt-init-overfull-boxes)) "pt to "
-                   (number-to-string (round mt-best-overfull-boxes)) "pt"))
-    "  ||  "
-    (if (= mt-init-underfull-boxes 0) "No underfull hboxes"
-      (concat "Underfull hboxes reduced by "
-              (number-to-string
-               (round
-                (/ (* 100 (- mt-init-underfull-boxes mt-best-underfull-boxes))
-                   mt-init-underfull-boxes))) "%% from "
-                   (number-to-string (round mt-init-underfull-boxes)) " to "
-                   (number-to-string (round mt-best-underfull-boxes))))
-    "  ||  "
-    (number-to-string mt-receive-count) "/"
-    (number-to-string mt-calculations) " compiled"
-    (when last-run (concat "
+  (concat
+   (if (and (= mt-init-overfull-boxes 0)
+            (= mt-best-overfull-boxes 0)) "No overfull hboxes"
+     (concat "Overfull hboxes reduced by "
+             (number-to-string
+              (round
+               (/ (* 100 (- mt-init-overfull-boxes mt-best-overfull-boxes))
+                  mt-init-overfull-boxes))) "%% from "
+                  (number-to-string (round mt-init-overfull-boxes)) "pt to "
+                  (number-to-string (round mt-best-overfull-boxes)) "pt"))
+   "  ||  "
+   (if (and (= mt-init-underfull-boxes 0)
+            (= mt-best-underfull-boxes 0)) "No underfull hboxes"
+     (concat "Underfull hboxes reduced by "
+             (number-to-string
+              (round
+               (/ (* 100 (- mt-init-underfull-boxes mt-best-underfull-boxes))
+                  mt-init-underfull-boxes))) "%% from "
+                  (number-to-string (round mt-init-underfull-boxes)) " to "
+                  (number-to-string (round mt-best-underfull-boxes))))
+   "  ||  "
+   (number-to-string mt-receive-count) "/"
+   (number-to-string mt-calculations) " compiled"
+   (when last-run (concat "
     output: " (car (split-string mt-result-file "\.tex$"))
-    ".macro-type.*  calculated in " (format-time-string "%s" (time-since mt-benchmark)) "s")))))
+    ".macro-type.*  calculated in " (format-time-string "%s" (time-since mt-benchmark)) "s"))))
 
 (defun mt-evaluate-boxes (mt-log)
   (setq mt-underfull-boxes 0)
