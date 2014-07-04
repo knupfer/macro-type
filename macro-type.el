@@ -38,7 +38,8 @@
           mt-forks cores
           mt-range range
           mt-best-file 1
-          mt-result-file file)
+          mt-result-file file
+          mt-last-message nil)
     (with-temp-buffer
       (insert-file-contents file)
       (setq mt-begin-buffer
@@ -68,9 +69,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")))
                     "\n\\begin{document}"
                     mt-end-buffer))
-    (write-file (concat "/tmp/tmp.macro-type."
-                        (number-to-string mt-times)
-                        ".tex"))))
+    (shell-command-on-region (point-min) (point-max)
+                             (concat "cat > /tmp/tmp.macro-type."
+                                     (number-to-string mt-times)
+                                     ".tex") nil nil)
+    (message mt-last-message)))
 
 (defun mt-pdflatex ()
   (setq mt-start-count (+ mt-start-count 1))
@@ -129,30 +132,32 @@
     (message (mt-minibuffer-message t))))
 
 (defun mt-minibuffer-message (&optional last-run)
-  (concat
-   (if (= mt-init-overfull-boxes 0) "There are no overfull hboxes"
-     (concat "Overfull hboxes reduced by "
-             (number-to-string
-              (round
-               (/ (* 100 (- mt-init-overfull-boxes mt-best-overfull-boxes))
-                  mt-init-overfull-boxes))) "%% from "
-                  (number-to-string (round mt-init-overfull-boxes)) "pt to "
-                  (number-to-string (round mt-best-overfull-boxes)) "pt"))
-   "  ||  "
-   (if (= mt-init-underfull-boxes 0) "There are no underfull hboxes"
-     (concat "Underfull hboxes reduced by "
-             (number-to-string
-              (round
-               (/ (* 100 (- mt-init-underfull-boxes mt-best-underfull-boxes))
-                  mt-init-underfull-boxes))) "%% from "
-                  (number-to-string (round mt-init-underfull-boxes)) " to "
-                  (number-to-string (round mt-best-underfull-boxes))))
-   "  ||  "
-   (number-to-string mt-receive-count) "/"
-   (number-to-string mt-calculations) " processes returned"
-   (when last-run (concat "
+  (setq
+   mt-last-message
+   (concat
+    (if (= mt-init-overfull-boxes 0) "No overfull hboxes"
+      (concat "Overfull hboxes reduced by "
+              (number-to-string
+               (round
+                (/ (* 100 (- mt-init-overfull-boxes mt-best-overfull-boxes))
+                   mt-init-overfull-boxes))) "%% from "
+                   (number-to-string (round mt-init-overfull-boxes)) "pt to "
+                   (number-to-string (round mt-best-overfull-boxes)) "pt"))
+    "  ||  "
+    (if (= mt-init-underfull-boxes 0) "No underfull hboxes"
+      (concat "Underfull hboxes reduced by "
+              (number-to-string
+               (round
+                (/ (* 100 (- mt-init-underfull-boxes mt-best-underfull-boxes))
+                   mt-init-underfull-boxes))) "%% from "
+                   (number-to-string (round mt-init-underfull-boxes)) " to "
+                   (number-to-string (round mt-best-underfull-boxes))))
+    "  ||  "
+    (number-to-string mt-receive-count) "/"
+    (number-to-string mt-calculations) " compiled"
+    (when last-run (concat "
     output:  " (car (split-string mt-result-file "\.tex$"))
-    ".macro-type.*"))))
+    ".macro-type.*")))))
 
 (defun mt-evaluate-boxes (mt-log)
   (setq mt-underfull-boxes 0)
