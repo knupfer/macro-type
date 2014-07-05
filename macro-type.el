@@ -53,7 +53,6 @@
           mt-section-overfull-vector (make-vector (length mt-section-list) 0)
           mt-all-underfull-vector (make-vector times 0)
           mt-all-overfull-vector (make-vector times 0))
-    (add-to-list 'mt-section-list (+ 1 (pop mt-section-list)))
     (with-temp-buffer
       (insert-file-contents file)
       (let ((this-buffer (buffer-string)))
@@ -100,7 +99,7 @@
                              (when (> mt-times 1)
                                (let ((size (+ mt-margin-increase
                                               (* (- mt-times 2) mt-increment))))
-                                 (concat " \\usepackage{mdframed} \\usepackage{color} \\definecolor{theme}{rgb}{1,0.5,0.5} \\newenvironment{definition}{\\begin{mdframed}[backgroundcolor=theme, hidealllines=true, skipabove=0cm, innerleftmargin=-0.2mm, innerrightmargin=-0.2mm]}{\\end{mdframed}}\\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}\\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}\\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}")))
+                                 (concat " \\usepackage{mdframed} \\usepackage{color} \\definecolor{theme}{rgb}{1,0.5,0.5} \\newenvironment{definition}{\\begin{mdframed}[backgroundcolor=theme, hidealllines=true, skipabove=0cm, innerleftmargin=0mm, innerrightmargin=0mm]}{\\end{mdframed}}\\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}\\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}\\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}")))
                              "\n\\begin{document} \" > "
                              (concat "/tmp/tmp.macro-type.header."
                                      (number-to-string mt-times)
@@ -168,7 +167,7 @@
         (shell-command
          (concat "sed -i '" (number-to-string
                              (nth local-count mt-section-list))
-                 " s/\\(.*\\)/\\\\begin{definition}  \\1/' /tmp/tmp.macro-type."
+                 " s/\\(.*\\)/\\1 \\\\begin{definition}/' /tmp/tmp.macro-type."
                  (number-to-string mt-best-file)
                  ".tex"))
         (shell-command
@@ -177,7 +176,8 @@
                  " s/\\(.*\\)/\\1 \\\\end{definition}/' /tmp/tmp.macro-type."
                  (number-to-string mt-best-file)
                  ".tex")))
-      (setq local-count (+ 1 local-count)))))
+      (setq local-count (+ 1 local-count))))
+  (message "Injecting mdframes"))
 
 (defun mt-minibuffer-message (&optional last-run)
   (concat
