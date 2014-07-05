@@ -1,6 +1,3 @@
-;; TODO: adjust for each warning.
-;; sed '2 s/\(.*\)/\1MACRO-TYPE/'
-
 ;;; macro-type.el --- optimize margins of tex-files
 
 ;; Copyright (C) 2014 Florian Knupfer
@@ -150,17 +147,34 @@
     (mt-pdflatex))
   (when (>= mt-receive-count mt-calculations)
     (mt-inject-mdframes)
+
     (shell-command
      (concat "cp /tmp/tmp.macro-type."
              (number-to-string mt-best-file)
              ".tex "
              (car (split-string mt-result-file "\.tex$"))
-             ".macro-type.tex; pdflatex -output-directory "
+             ".macro-type.tex ; rm /tmp/tmp.macro-type.* ; pdflatex -output-directory "
              (car (split-string mt-result-file "/[^/]+\.tex$"))
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
-             ".macro-type.tex > /dev/null;"
-             " rm /tmp/tmp.macro-type.*"))
+             ".macro-type.tex > /dev/null" ))
+    (with-temp-buffer
+      (insert-file (concat
+                    (car (split-string mt-result-file "\.tex$"))
+                    ".macro-type.log"))
+      (mt-evaluate-boxes (buffer-string)))
+    (if (> mt-current-count 1)
+        (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
+                 (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
+          (setq mt-best-overfull-boxes mt-overfull-boxes
+                mt-best-underfull-boxes mt-underfull-boxes
+                mt-best-file mt-current-count
+                mt-error-list mt-error-positions))
+      (setq mt-init-overfull-boxes mt-overfull-boxes
+            mt-best-overfull-boxes mt-overfull-boxes
+            mt-init-underfull-boxes mt-underfull-boxes
+            mt-best-underfull-boxes mt-underfull-boxes
+            mt-error-list mt-error-positions))
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
@@ -172,25 +186,40 @@
       (setq local-file-count 0
             local-file mt-best-file
             margin-change 0)
-      (when (> (elt (elt mt-all-overfull-vector
-                         (- mt-best-file 1))
-                    section-count) 0)
+      (when (> (+ (* 100 (elt (elt mt-all-overfull-vector
+                                   (- mt-best-file 1))
+                              section-count))
+                  (elt (elt mt-all-underfull-vector
+                            (- mt-best-file 1))
+                        section-count)) 0)
         (while (< local-file-count mt-calculations)
           (when (<= (+ local-file-count mt-best-file) mt-calculations)
-            (when (< (elt (elt mt-all-overfull-vector
-                               (+ local-file-count (- mt-best-file 1)))
-                          section-count)
-                     (elt (elt mt-all-overfull-vector
-                               (- local-file 1))
-                          section-count))
+            (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
+                                         (+ local-file-count (- mt-best-file 1)))
+                                    section-count))
+                        (elt (elt mt-all-underfull-vector
+                                  (+ local-file-count (- mt-best-file 1)))
+                              section-count))
+                     (+ (* 100 (elt (elt mt-all-overfull-vector
+                                         (- local-file 1))
+                                    section-count))
+                        (elt (elt mt-all-underfull-vector
+                                  (- local-file 1))
+                             section-count)))
               (setq local-file (+ local-file-count mt-best-file))))
           (when (> (- mt-best-file local-file-count) 0)
-            (when (< (elt (elt mt-all-overfull-vector
-                               (- (- mt-best-file 1) local-file-count))
-                          section-count)
-                     (elt (elt mt-all-overfull-vector
-                               (- local-file 1))
-                          section-count))
+            (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
+                                         (- (- mt-best-file 1) local-file-count))
+                                    section-count))
+                        (elt (elt mt-all-underfull-vector
+                                  (- (- mt-best-file 1) local-file-count))
+                             section-count))
+                     (+ (* 100 (elt (elt mt-all-overfull-vector
+                                         (- local-file 1))
+                                    section-count))
+                        (elt (elt mt-all-underfull-vector
+                                  (- local-file 1))
+                             section-count)))
               (setq local-file (- mt-best-file local-file-count))))
           (setq local-file-count (+ local-file-count 1)))
         (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
