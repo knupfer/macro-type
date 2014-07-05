@@ -41,6 +41,7 @@
           mt-result-file file
           mt-benchmark (current-time)
           mt-section-list
+          mt-current-count 1
           (map 'list 'string-to-number
                (split-string
                 (shell-command-to-string
@@ -158,23 +159,21 @@
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
              ".macro-type.tex > /dev/null" ))
+
     (with-temp-buffer
       (insert-file (concat
                     (car (split-string mt-result-file "\.tex$"))
                     ".macro-type.log"))
+      (setq mt-debug (buffer-string))
       (mt-evaluate-boxes (buffer-string)))
-    (if (> mt-current-count 1)
-        (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
-                 (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
-          (setq mt-best-overfull-boxes mt-overfull-boxes
-                mt-best-underfull-boxes mt-underfull-boxes
-                mt-best-file mt-current-count
-                mt-error-list mt-error-positions))
-      (setq mt-init-overfull-boxes mt-overfull-boxes
-            mt-best-overfull-boxes mt-overfull-boxes
-            mt-init-underfull-boxes mt-underfull-boxes
+    (message "debugg")
+    (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
+             (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
+      (setq mt-best-overfull-boxes mt-overfull-boxes
             mt-best-underfull-boxes mt-underfull-boxes
+            mt-best-file mt-current-count
             mt-error-list mt-error-positions))
+
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
@@ -284,7 +283,6 @@
   (setq mt-error-positions nil)
   (fillarray mt-section-underfull-vector 0)
   (fillarray mt-section-overfull-vector 0)
-  (setq mt-debug mt-log)
   (with-temp-buffer
     (insert mt-log)
     (goto-char (point-min))
@@ -315,5 +313,5 @@
         (aset mt-section-underfull-vector (- local-count 1)
               (+ (string-to-number (match-string 1))
                  (elt mt-section-underfull-vector (- local-count 1))))))
-    (re-search-forward "Transcript written on /tmp/tmp\.macro-type\.\\([[:digit:]]+\\)\.log" nil t)
-    (setq mt-current-count (string-to-number (match-string 1)))))
+    (when (re-search-forward "Transcript written on /tmp/tmp\.macro-type\.\\([[:digit:]]+\\)\.log" nil t)
+      (setq mt-current-count (string-to-number (match-string 1))))))
