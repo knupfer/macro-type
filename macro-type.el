@@ -193,7 +193,16 @@
                           section-count))
               (setq local-file (- mt-best-file local-file-count))))
           (setq local-file-count (+ local-file-count 1)))
-
+        (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
+        (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
+        (setq margin-change (if (= local-file 1)
+                                (* -1
+                                   (+ mt-margin-increase
+                                      (* (- mt-best-file 2) mt-increment)))
+                              (- (+ mt-margin-increase
+                                    (* (- local-file 2) mt-increment))
+                                 (+ mt-margin-increase
+                                    (* (- mt-best-file 2) mt-increment)))))
         (shell-command
          (concat "sed -i '" (number-to-string
                              (nth section-count mt-section-list))
