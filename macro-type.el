@@ -164,16 +164,39 @@
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
-  ;; \\begin{mdframed}[backgroundcolor=theme, hidealllines=true, skipabove=0cm, innerleftmargin=0mm, innerrightmargin=0mm]
-  (let ((local-count 0)
-        (margin-change 0))
-    (while (< local-count (- (length mt-section-list) 1))
+  (let ((section-count 0)
+        (margin-change 0)
+        (local-file mt-best-file)
+        (local-file-count 0))
+    (while (< section-count (- (length mt-section-list) 1))
+      (setq local-file-count 0
+            local-file mt-best-file
+            margin-change 0)
       (when (> (elt (elt mt-all-overfull-vector
                          (- mt-best-file 1))
-                    local-count) 0)
+                    section-count) 0)
+        (while (< local-file-count mt-calculations)
+          (when (<= (+ local-file-count mt-best-file) mt-calculations)
+            (when (< (elt (elt mt-all-overfull-vector
+                               (+ local-file-count (- mt-best-file 1)))
+                          section-count)
+                     (elt (elt mt-all-overfull-vector
+                               (- local-file 1))
+                          section-count))
+              (setq local-file (+ local-file-count mt-best-file))))
+          (when (> (- mt-best-file local-file-count) 0)
+            (when (< (elt (elt mt-all-overfull-vector
+                               (- (- mt-best-file 1) local-file-count))
+                          section-count)
+                     (elt (elt mt-all-overfull-vector
+                               (- local-file 1))
+                          section-count))
+              (setq local-file (- mt-best-file local-file-count))))
+          (setq local-file-count (+ local-file-count 1)))
+
         (shell-command
          (concat "sed -i '" (number-to-string
-                             (nth local-count mt-section-list))
+                             (nth section-count mt-section-list))
                  " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,skipabove=0mm,innerleftmargin="
                  (number-to-string margin-change) "mm,innerrightmargin="
                  (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
@@ -181,11 +204,11 @@
                  ".tex"))
         (shell-command
          (concat "sed -i '" (number-to-string
-                             (- (nth (+ 1 local-count) mt-section-list) 1))
+                             (- (nth (+ 1 section-count) mt-section-list) 1))
                  " s/\\(.*\\)/\\1 \\\\end{mdframed}/' /tmp/tmp.macro-type."
                  (number-to-string mt-best-file)
                  ".tex")))
-      (setq local-count (+ 1 local-count))))
+      (setq section-count (+ 1 section-count))))
   (message "Injecting mdframes"))
 
 (defun mt-minibuffer-message (&optional last-run)
