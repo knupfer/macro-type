@@ -1,3 +1,6 @@
+;; TODO: adjust for each warning.
+;; sed '2 s/\(.*\)/\1MACRO-TYPE/'
+
 ;;; macro-type.el --- optimize margins of tex-files
 
 ;; Copyright (C) 2014 Florian Knupfer
@@ -39,20 +42,41 @@
           mt-range range
           mt-best-file 1
           mt-result-file file
-          mt-benchmark (current-time))
-
+          mt-benchmark (current-time)
+          mt-section-list
+          (map 'list 'string-to-number
+               (split-string (shell-command-to-string
+                              (concat "grep -n 'section{.*}\\|begin{document}' "
+                                      file " | grep -o ^[0-9]*"))))
+          mt-section-underfull-vector (make-vector (length mt-section-list) 0)
+          mt-section-overfull-vector (make-vector (length mt-section-list) 0))
     (with-temp-buffer
       (insert-file-contents file)
       (let ((this-buffer (buffer-string)))
         (with-temp-buffer
           (insert
-           (car (split-string this-buffer "\\\\begin{document}")))
+           (car
+            (split-string this-buffer "\n.*\\\\begin{document}.*\n")))
           (write-file "/tmp/tmp.macro-type.begin"))
         (with-temp-buffer
           (insert
-           (car (cdr (split-string this-buffer "\\\\begin{document}"))))
+           (car
+            (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
           (write-file "/tmp/tmp.macro-type.end"))))
     (mt-pdflatex)))
+
+(defun mt-error-in-section ()
+  (interactive)
+  (setq mt-flawed-sections nil)
+  (mapc
+   (lambda (this-error)
+     (let ((error-section 0))
+       (mapc (lambda (this-section)
+               (when (< this-section this-error)
+                 (setq error-section this-section)))
+             mt-section-list)
+       (when error-section (add-to-list 'mt-flawed-sections error-section))))
+   mt-error-list))
 
 (defun mt-file-check (file)
   (with-temp-buffer
@@ -72,13 +96,8 @@
                              (when (> mt-times 1)
                                (let ((size (+ mt-margin-increase
                                               (* (- mt-times 2) mt-increment))))
-                                 (concat "
-%%%%%%%%%%%%%%% Macro-type %%%%%%%%%%%%%%%%%
-    \\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}
-    \\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}
-    \\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")))
-                             "\n \\begin{document} \" > "
+                                 (concat " \\usepackage{mdframed} \\usepackage{color} \\definecolor{theme}{rgb}{1,0.5,0.5} \\newenvironment{definition}{\\begin{mdframed}[backgroundcolor=theme, hidealllines=true, skipabove=0cm, innerleftmargin=-0.2mm, innerrightmargin=-0.2mm]}{\\end{mdframed}}\\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}\\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}\\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}")))
+                             "\n\\begin{document} \" > "
                              (concat "/tmp/tmp.macro-type.header."
                                      (number-to-string mt-times)
                                      ".tex")))
@@ -107,11 +126,13 @@
                (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
         (setq mt-best-overfull-boxes mt-overfull-boxes
               mt-best-underfull-boxes mt-underfull-boxes
-              mt-best-file mt-start-count))
+              mt-best-file mt-start-count
+              mt-error-list mt-error-positions))
     (setq mt-init-overfull-boxes mt-overfull-boxes
           mt-best-overfull-boxes mt-overfull-boxes
           mt-init-underfull-boxes mt-underfull-boxes
-          mt-best-underfull-boxes mt-underfull-boxes))
+          mt-best-underfull-boxes mt-underfull-boxes
+          mt-error-list mt-error-positions))
   (setq mt-receive-count (+ mt-receive-count 1))
   (message (mt-minibuffer-message))
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
@@ -157,20 +178,40 @@
    (number-to-string mt-calculations) " compiled"
    (when last-run (concat "
     output: " (car (split-string mt-result-file "\.tex$"))
-    ".macro-type.*  calculated in " (format-time-string "%s" (time-since mt-benchmark)) "s"))))
+    ".macro-type.*  calculated in "
+    (format-time-string "%s" (time-since mt-benchmark)) "s"))))
 
 (defun mt-evaluate-boxes (mt-log)
   (setq mt-underfull-boxes 0)
   (setq mt-overfull-boxes 0)
+  (setq mt-error-positions nil)
   (with-temp-buffer
     (insert mt-log)
     (goto-char (point-min))
     (while (re-search-forward
-            "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*" nil t)
+            "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*lines \\([[:digit:]]+\\)" nil t)
       (setq mt-overfull-boxes
-            (+ mt-overfull-boxes (string-to-number (match-string 1)))))
+            (+ mt-overfull-boxes (string-to-number (match-string 1))))
+      (add-to-list 'mt-error-positions (string-to-number (match-string 2)))
+      (let ((local-count 0))
+        (while (and (< local-count (- (length mt-section-list) 1))
+                    (< (nth local-count mt-section-list)
+                       (string-to-number (match-string 2))))
+          (setq local-count (+ local-count 1)))
+        (aset mt-section-overfull-vector local-count
+              (+ (string-to-number (match-string 1))
+                 (elt mt-section-overfull-vector local-count)))))
     (goto-char (point-min))
     (while (re-search-forward
-            "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*" nil t)
+            "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*lines \\([[:digit:]]+\\)" nil t)
       (setq mt-underfull-boxes
-            (+ mt-underfull-boxes (string-to-number (match-string 1)))))))
+            (+ mt-underfull-boxes (string-to-number (match-string 1))))
+      (add-to-list 'mt-error-positions (string-to-number (match-string 2)))
+      (let ((local-count 0))
+        (while (and (< local-count (- (length mt-section-list) 1))
+                    (< (nth local-count mt-section-list)
+                       (string-to-number (match-string 2))))
+          (setq local-count (+ local-count 1)))
+        (aset mt-section-underfull-vector local-count
+              (+ (string-to-number (match-string 1))
+                 (elt mt-section-underfull-vector local-count)))))))
