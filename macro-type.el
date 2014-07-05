@@ -45,9 +45,10 @@
           mt-benchmark (current-time)
           mt-section-list
           (map 'list 'string-to-number
-               (split-string (shell-command-to-string
-                              (concat "grep -n 'section{.*}\\|begin{document}' "
-                                      file " | grep -o ^[0-9]*"))))
+               (split-string
+                (shell-command-to-string
+                 (concat "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
+                         file " | grep -o ^[0-9]*"))))
           mt-section-underfull-vector (make-vector (length mt-section-list) 0)
           mt-section-overfull-vector (make-vector (length mt-section-list) 0)
           mt-all-underfull-vector (make-vector times 0)
@@ -159,17 +160,24 @@
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
-  (shell-command
-   (concat "sed -i '" (number-to-string (car (cdr mt-section-list)))
-           " s/\\(.*\\)/\\\\begin{definition}  \\1/' /tmp/tmp.macro-type."
-           (number-to-string mt-best-file)
-           ".tex"))
-    (shell-command
-     (concat "sed -i '" (number-to-string (- (car (cdr (cdr mt-section-list))) 1))
-             " s/\\(.*\\)/\\\\end{definition}  \\1/' /tmp/tmp.macro-type."
-             (number-to-string mt-best-file)
-             ".tex"))
-    )
+  (let ((local-count 0))
+    (while (< local-count (- (length mt-section-list) 1))
+      (when (> (elt (elt mt-all-overfull-vector
+                         (- mt-best-file 1))
+                    local-count) 0)
+        (shell-command
+         (concat "sed -i '" (number-to-string
+                             (nth local-count mt-section-list))
+                 " s/\\(.*\\)/\\\\begin{definition}  \\1/' /tmp/tmp.macro-type."
+                 (number-to-string mt-best-file)
+                 ".tex"))
+        (shell-command
+         (concat "sed -i '" (number-to-string
+                             (- (nth (+ 1 local-count) mt-section-list) 1))
+                 " s/\\(.*\\)/\\1 \\\\end{definition}/' /tmp/tmp.macro-type."
+                 (number-to-string mt-best-file)
+                 ".tex")))
+      (setq local-count (+ 1 local-count)))))
 
 (defun mt-minibuffer-message (&optional last-run)
   (concat
@@ -216,13 +224,13 @@
             (+ mt-overfull-boxes (string-to-number (match-string 1))))
       (add-to-list 'mt-error-positions (string-to-number (match-string 2)))
       (let ((local-count 0))
-        (while (and (< local-count (- (length mt-section-list) 1))
+        (while (and (< local-count (length mt-section-list))
                     (< (nth local-count mt-section-list)
                        (string-to-number (match-string 2))))
           (setq local-count (+ local-count 1)))
-        (aset mt-section-overfull-vector local-count
+        (aset mt-section-overfull-vector (- local-count 1)
               (+ (string-to-number (match-string 1))
-                 (elt mt-section-overfull-vector local-count)))))
+                 (elt mt-section-overfull-vector (- local-count 1))))))
     (goto-char (point-min))
     (while (re-search-forward
             "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*lines \\([[:digit:]]+\\)" nil t)
@@ -230,12 +238,12 @@
             (+ mt-underfull-boxes (string-to-number (match-string 1))))
       (add-to-list 'mt-error-positions (string-to-number (match-string 2)))
       (let ((local-count 0))
-        (while (and (< local-count (- (length mt-section-list) 1))
+        (while (and (< local-count (length mt-section-list))
                     (< (nth local-count mt-section-list)
                        (string-to-number (match-string 2))))
           (setq local-count (+ local-count 1)))
-        (aset mt-section-underfull-vector local-count
+        (aset mt-section-underfull-vector (- local-count 1)
               (+ (string-to-number (match-string 1))
-                 (elt mt-section-underfull-vector local-count)))))
+                 (elt mt-section-underfull-vector (- local-count 1))))))
     (re-search-forward "Transcript written on /tmp/tmp\.macro-type\.\\([[:digit:]]+\\)\.log" nil t)
     (setq mt-current-count (string-to-number (match-string 1)))))
