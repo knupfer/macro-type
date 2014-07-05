@@ -99,7 +99,12 @@
                              (when (> mt-times 1)
                                (let ((size (+ mt-margin-increase
                                               (* (- mt-times 2) mt-increment))))
-                                 (concat " \\usepackage{mdframed} \\usepackage{color} \\definecolor{theme}{rgb}{1,0.5,0.5} \\newenvironment{definition}{\\begin{mdframed}[backgroundcolor=theme, hidealllines=true, skipabove=0cm, innerleftmargin=0mm, innerrightmargin=0mm]}{\\end{mdframed}}\\addtolength{\\oddsidemargin }{ " (number-to-string size)        "mm}\\addtolength{\\evensidemargin}{ " (number-to-string size)        "mm}\\addtolength{\\textwidth     }{ " (number-to-string (* -2 size)) "mm}")))
+                                 (concat " \\usepackage{mdframed}\\usepackage{color}\\definecolor{theme}{rgb}{1,0.5,0.5}\\addtolength{\\oddsidemargin}{"
+                                         (number-to-string size)
+                                         "mm}\\addtolength{\\evensidemargin}{"
+                                         (number-to-string size)
+                                         "mm}\\addtolength{\\textwidth}{"
+                                         (number-to-string (* -2 size)) "mm}")))
                              "\n\\begin{document} \" > "
                              (concat "/tmp/tmp.macro-type.header."
                                      (number-to-string mt-times)
@@ -159,7 +164,9 @@
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
-  (let ((local-count 0))
+  ;; \\begin{mdframed}[backgroundcolor=theme, hidealllines=true, skipabove=0cm, innerleftmargin=0mm, innerrightmargin=0mm]
+  (let ((local-count 0)
+        (margin-change 0))
     (while (< local-count (- (length mt-section-list) 1))
       (when (> (elt (elt mt-all-overfull-vector
                          (- mt-best-file 1))
@@ -167,13 +174,15 @@
         (shell-command
          (concat "sed -i '" (number-to-string
                              (nth local-count mt-section-list))
-                 " s/\\(.*\\)/\\1 \\\\begin{definition}/' /tmp/tmp.macro-type."
+                 " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,skipabove=0mm,innerleftmargin="
+                 (number-to-string margin-change) "mm,innerrightmargin="
+                 (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
                  (number-to-string mt-best-file)
                  ".tex"))
         (shell-command
          (concat "sed -i '" (number-to-string
                              (- (nth (+ 1 local-count) mt-section-list) 1))
-                 " s/\\(.*\\)/\\1 \\\\end{definition}/' /tmp/tmp.macro-type."
+                 " s/\\(.*\\)/\\1 \\\\end{mdframed}/' /tmp/tmp.macro-type."
                  (number-to-string mt-best-file)
                  ".tex")))
       (setq local-count (+ 1 local-count))))
