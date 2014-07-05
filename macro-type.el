@@ -49,7 +49,9 @@
                               (concat "grep -n 'section{.*}\\|begin{document}' "
                                       file " | grep -o ^[0-9]*"))))
           mt-section-underfull-vector (make-vector (length mt-section-list) 0)
-          mt-section-overfull-vector (make-vector (length mt-section-list) 0))
+          mt-section-overfull-vector (make-vector (length mt-section-list) 0)
+          mt-all-underfull-vector (make-vector times 0)
+          mt-all-overfull-vector (make-vector times 0))
     (with-temp-buffer
       (insert-file-contents file)
       (let ((this-buffer (buffer-string)))
@@ -121,12 +123,14 @@
 
 (defun mt-evaluate-result (result)
   (mt-evaluate-boxes result)
-  (if (> mt-start-count 1)
+  (aset mt-all-underfull-vector (- mt-current-count 1) (copy-sequence mt-section-underfull-vector))
+  (aset mt-all-overfull-vector (- mt-current-count 1) (copy-sequence mt-section-overfull-vector))
+  (if (> mt-current-count 1)
       (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
                (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
         (setq mt-best-overfull-boxes mt-overfull-boxes
               mt-best-underfull-boxes mt-underfull-boxes
-              mt-best-file mt-start-count
+              mt-best-file mt-current-count
               mt-error-list mt-error-positions))
     (setq mt-init-overfull-boxes mt-overfull-boxes
           mt-best-overfull-boxes mt-overfull-boxes
@@ -139,6 +143,7 @@
              (< mt-start-count mt-calculations))
     (mt-pdflatex))
   (when (>= mt-receive-count mt-calculations)
+    (mt-inject-mdframes)
     (shell-command
      (concat "cp /tmp/tmp.macro-type."
              (number-to-string mt-best-file)
@@ -151,6 +156,9 @@
              ".macro-type.tex > /dev/null;"
              " rm /tmp/tmp.macro-type.*"))
     (message (mt-minibuffer-message t))))
+
+(defun mt-inject-mdframes ()
+  )
 
 (defun mt-minibuffer-message (&optional last-run)
   (concat
@@ -185,6 +193,9 @@
   (setq mt-underfull-boxes 0)
   (setq mt-overfull-boxes 0)
   (setq mt-error-positions nil)
+  (fillarray mt-section-underfull-vector 0)
+  (fillarray mt-section-overfull-vector 0)
+  (setq mt-debug mt-log)
   (with-temp-buffer
     (insert mt-log)
     (goto-char (point-min))
@@ -214,4 +225,6 @@
           (setq local-count (+ local-count 1)))
         (aset mt-section-underfull-vector local-count
               (+ (string-to-number (match-string 1))
-                 (elt mt-section-underfull-vector local-count)))))))
+                 (elt mt-section-underfull-vector local-count)))))
+    (re-search-forward "Transcript written on /tmp/tmp\.macro-type\.\\([[:digit:]]+\\)\.log" nil t)
+    (setq mt-current-count (string-to-number (match-string 1)))))
