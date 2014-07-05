@@ -45,8 +45,9 @@
           (map 'list 'string-to-number
                (split-string
                 (shell-command-to-string
-                 (concat "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
-                         file " | grep -o ^[0-9]*"))))
+                 (concat
+                  "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
+                  file " | grep -o ^[0-9]*"))))
           mt-section-underfull-vector (make-vector (length mt-section-list) 0)
           mt-section-overfull-vector (make-vector (length mt-section-list) 0)
           mt-all-underfull-vector (make-vector times 0)
@@ -69,15 +70,15 @@
 (defun mt-error-in-section ()
   (interactive)
   (setq mt-flawed-sections nil)
-  (mapc
-   (lambda (this-error)
-     (let ((error-section 0))
-       (mapc (lambda (this-section)
-               (when (< this-section this-error)
-                 (setq error-section this-section)))
-             mt-section-list)
-       (when error-section (add-to-list 'mt-flawed-sections error-section))))
-   mt-error-list))
+  (mapc (lambda (this-error)
+          (let ((error-section 0))
+            (mapc (lambda (this-section)
+                    (when (< this-section this-error)
+                      (setq error-section this-section)))
+                  mt-section-list)
+            (when error-section
+              (add-to-list 'mt-flawed-sections error-section))))
+        mt-error-list))
 
 (defun mt-file-check (file)
   (with-temp-buffer
@@ -93,20 +94,20 @@
             mt-margin-increase (- 0 (* 0.5 mt-range))
             mt-times ,mt-start-count
             mt-increment (/ mt-range 1.0 (max 1 (- ,mt-calculations 2))))
-      (shell-command (concat "echo \""
-                             (when (> mt-times 1)
-                               (let ((size (+ mt-margin-increase
-                                              (* (- mt-times 2) mt-increment))))
-                                 (concat " \\usepackage{mdframed}\\usepackage{color}\\definecolor{theme}{rgb}{1,0.5,0.5}\\addtolength{\\oddsidemargin}{"
-                                         (number-to-string size)
-                                         "mm}\\addtolength{\\evensidemargin}{"
-                                         (number-to-string size)
-                                         "mm}\\addtolength{\\textwidth}{"
-                                         (number-to-string (* -2 size)) "mm}")))
-                             "\n\\begin{document} \" > "
-                             (concat "/tmp/tmp.macro-type.header."
-                                     (number-to-string mt-times)
-                                     ".tex")))
+      (shell-command
+       (concat "echo \""
+               (when (> mt-times 1)
+                 (let ((size (+ mt-margin-increase
+                                (* (- mt-times 2) mt-increment))))
+                   (concat " \\usepackage{mdframed}\\usepackage{color}\\definecolor{theme}{rgb}{1,0.5,0.5}\\addtolength{\\oddsidemargin}{"
+                           (number-to-string size)
+                           "mm}\\addtolength{\\evensidemargin}{"
+                           (number-to-string size)
+                           "mm}\\addtolength{\\textwidth}{"
+                           (number-to-string (* -2 size)) "mm}")))
+               "\n\\begin{document} \" > "
+               (concat "/tmp/tmp.macro-type.header."
+                       (number-to-string mt-times) ".tex")))
       (shell-command-to-string
        (concat "cat"
                " /tmp/tmp.macro-type.begin"
@@ -127,8 +128,10 @@
 
 (defun mt-evaluate-result (result)
   (mt-evaluate-boxes result)
-  (aset mt-all-underfull-vector (- mt-current-count 1) (copy-sequence mt-section-underfull-vector))
-  (aset mt-all-overfull-vector (- mt-current-count 1) (copy-sequence mt-section-overfull-vector))
+  (aset mt-all-underfull-vector
+        (- mt-current-count 1) (copy-sequence mt-section-underfull-vector))
+  (aset mt-all-overfull-vector
+        (- mt-current-count 1) (copy-sequence mt-section-overfull-vector))
   (if (> mt-current-count 1)
       (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
                (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
@@ -148,7 +151,6 @@
     (mt-pdflatex))
   (when (>= mt-receive-count mt-calculations)
     (mt-inject-mdframes)
-
     (shell-command
      (concat "cp /tmp/tmp.macro-type."
              (number-to-string mt-best-file)
@@ -159,7 +161,6 @@
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
              ".macro-type.tex > /dev/null" ))
-
     (with-temp-buffer
       (insert-file (concat
                     (car (split-string mt-result-file "\.tex$"))
@@ -173,7 +174,6 @@
             mt-best-underfull-boxes mt-underfull-boxes
             mt-best-file mt-current-count
             mt-error-list mt-error-positions))
-
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
@@ -185,20 +185,20 @@
       (setq local-file-count 0
             local-file mt-best-file
             margin-change 0)
-      (when (> (+ (* 100 (elt (elt mt-all-overfull-vector
-                                   (- mt-best-file 1))
+      (when (> (+ (* 100 (elt (elt mt-all-overfull-vector (- mt-best-file 1))
                               section-count))
                   (elt (elt mt-all-underfull-vector
                             (- mt-best-file 1))
-                        section-count)) 0)
+                       section-count)) 0)
         (while (< local-file-count mt-calculations)
           (when (<= (+ local-file-count mt-best-file) mt-calculations)
             (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
-                                         (+ local-file-count (- mt-best-file 1)))
+                                         (+ local-file-count
+                                            (- mt-best-file 1)))
                                     section-count))
                         (elt (elt mt-all-underfull-vector
                                   (+ local-file-count (- mt-best-file 1)))
-                              section-count))
+                             section-count))
                      (+ (* 100 (elt (elt mt-all-overfull-vector
                                          (- local-file 1))
                                     section-count))
@@ -208,7 +208,8 @@
               (setq local-file (+ local-file-count mt-best-file))))
           (when (> (- mt-best-file local-file-count) 0)
             (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
-                                         (- (- mt-best-file 1) local-file-count))
+                                         (- (- mt-best-file 1)
+                                            local-file-count))
                                     section-count))
                         (elt (elt mt-all-underfull-vector
                                   (- (- mt-best-file 1) local-file-count))
@@ -224,9 +225,8 @@
         (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
         (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
         (setq margin-change (if (= local-file 1)
-                                (* -1
-                                   (+ mt-margin-increase
-                                      (* (- mt-best-file 2) mt-increment)))
+                                (* -1 (+ mt-margin-increase
+                                         (* (- mt-best-file 2) mt-increment)))
                               (- (+ mt-margin-increase
                                     (* (- local-file 2) mt-increment))
                                  (+ mt-margin-increase
