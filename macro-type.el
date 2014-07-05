@@ -52,6 +52,7 @@
           mt-section-overfull-vector (make-vector (length mt-section-list) 0)
           mt-all-underfull-vector (make-vector times 0)
           mt-all-overfull-vector (make-vector times 0))
+    (add-to-list 'mt-section-list (+ 1 (pop mt-section-list)))
     (with-temp-buffer
       (insert-file-contents file)
       (let ((this-buffer (buffer-string)))
@@ -158,7 +159,17 @@
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
-  )
+  (shell-command
+   (concat "sed -i '" (number-to-string (car (cdr mt-section-list)))
+           " s/\\(.*\\)/\\\\begin{definition}  \\1/' /tmp/tmp.macro-type."
+           (number-to-string mt-best-file)
+           ".tex"))
+    (shell-command
+     (concat "sed -i '" (number-to-string (- (car (cdr (cdr mt-section-list))) 1))
+             " s/\\(.*\\)/\\\\end{definition}  \\1/' /tmp/tmp.macro-type."
+             (number-to-string mt-best-file)
+             ".tex"))
+    )
 
 (defun mt-minibuffer-message (&optional last-run)
   (concat
