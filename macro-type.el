@@ -97,12 +97,14 @@ pagesize of individual sections."
                (when (> mt-times 1)
                  (let ((size (+ mt-margin-increase
                                 (* (- mt-times 2) mt-increment))))
-                   (concat " \\usepackage{mdframed}\\usepackage{color}\\definecolor{theme}{rgb}{1,0.5,0.5}\\addtolength{\\oddsidemargin}{"
-                           (number-to-string size)
-                           "mm}\\addtolength{\\evensidemargin}{"
-                           (number-to-string size)
-                           "mm}\\addtolength{\\textwidth}{"
-                           (number-to-string (* -2 size)) "mm}")))
+                   (concat
+                    "\\usepackage{mdframed}"
+                    "\\addtolength"
+                    "{\\oddsidemargin}{" (number-to-string size) "mm}"
+                    "\\addtolength"
+                    "{\\evensidemargin}{" (number-to-string size) "mm}"
+                    "\\addtolength"
+                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}")))
                "\n\\begin{document} \" > "
                (concat "/tmp/tmp.macro-type.header."
                        (number-to-string mt-times) ".tex")))
@@ -114,8 +116,8 @@ pagesize of individual sections."
                " /tmp/tmp.macro-type.header."
                (number-to-string ,mt-start-count) ".tex"
                " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
-               (number-to-string ,mt-start-count)
-               ".tex ; pdflatex"
+               (number-to-string ,mt-start-count) ".tex;"
+               "pdflatex"
                " -output-directory /tmp"
                " -draftmode"
                " -interaction nonstopmode /tmp/tmp.macro-type."
@@ -160,15 +162,14 @@ pagesize of individual sections."
   (when (>= mt-receive-count mt-calculations)
     (mt-inject-mdframes)
     (shell-command
-     (concat "cp /tmp/tmp.macro-type."
-             (number-to-string mt-best-file)
-             ".tex "
-             (car (split-string mt-result-file "\.tex$"))
-             ".macro-type.tex ; rm /tmp/tmp.macro-type.* ; pdflatex -output-directory "
+     (concat "cp /tmp/tmp.macro-type." (number-to-string mt-best-file) ".tex "
+             (car (split-string mt-result-file "\.tex$")) ".macro-type.tex;"
+             "rm /tmp/tmp.macro-type.*;"
+             "pdflatex -output-directory "
              (car (split-string mt-result-file "/[^/]+\.tex$"))
              " -interaction nonstopmode "
-             (car (split-string mt-result-file "\.tex$"))
-             ".macro-type.tex > /dev/null" ))
+             (car (split-string mt-result-file "\.tex$")) ".macro-type.tex"
+             " > /dev/null"))
     ;; Recalculate badness after mdframe injection.
     (with-temp-buffer
       (insert-file (concat
@@ -184,9 +185,7 @@ pagesize of individual sections."
 
 (defun mt-inject-mdframes ()
   "Change pagesize for sections."
-  (let ((section-count 0) 
-        (local-file mt-best-file)
-        (local-file-count 0)
+  (let ((section-count 0)
         (blur-count 0)
         (mt-blur-vector (make-vector (- (length mt-section-list) 1)
                                      mt-best-file))
@@ -195,31 +194,23 @@ pagesize of individual sections."
     (while (< blur-count 3)
       (setq blur-count (+ blur-count 1)
             section-count 0
-            mt-blur-vector (mt-blur-mdframe mt-used-calculation-vector mt-best-file)
-            mt-used-calculation-vector (mt-blur-mdframe mt-used-calculation-vector mt-best-file))
+            mt-blur-vector (mt-blur-mdframe mt-used-calculation-vector
+                                            mt-best-file)
+            mt-used-calculation-vector mt-blur-vector)
       ;; Do this for every section.
       (while (< section-count (- (length mt-section-list) 1))
-        (setq local-file-count 0
-              local-file (elt mt-blur-vector section-count)
-              mt-best-file-tmp (elt mt-blur-vector section-count))
+        (setq mt-best-file-tmp (elt mt-blur-vector section-count))
         ;; Calculate only when there is badness.
         (when (mt-is-there-badness-p mt-all-overfull-vector
                                      mt-all-underfull-vector
                                      mt-best-file-tmp
                                      section-count)
           ;; Look at all alternative pagesizes.
-          (while (< local-file-count mt-calculations)
-            ;; Look at lesser pagesizes.
-            (setq local-file
-                  (mt-nearest-good-file-number local-file-count
-                                               local-file
-                                               mt-best-file-tmp
-                                               mt-all-underfull-vector
-                                               mt-all-overfull-vector
-                                               mt-calculations
-                                               section-count))
-            (aset mt-used-calculation-vector section-count local-file)
-            (setq local-file-count (+ local-file-count 1))))
+          (aset mt-used-calculation-vector section-count
+                (mt-nearest-good-file-number mt-best-file-tmp
+                                             mt-all-underfull-vector
+                                             mt-all-overfull-vector
+                                             section-count)))
         (setq section-count (+ 1 section-count))))
     (setq section-count 0)
     (while (< section-count (- (length mt-section-list) 1))
@@ -239,41 +230,40 @@ pagesize of individual sections."
   ;; Actually, they are already injected.
   (message "Injecting mdframes"))
 
-(defun mt-nearest-good-file-number (local-file-count
-                                    local-file-number
-                                    best-file-number
+(defun mt-nearest-good-file-number (best-file-number
                                     underfull-matrix
                                     overfull-matrix
-                                    calculations
                                     current-section)
-
-  (when (and (<= (+ local-file-count best-file-number) calculations)
-             (< (+ (* 100 (elt (elt overfull-matrix (+ local-file-count
-                                                       (- best-file-number 1)))
-                               current-section))
-                   (elt (elt underfull-matrix (+ local-file-count
-                                                 (- best-file-number 1)))
-                        current-section))
-                (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
-                               current-section))
-                   (elt (elt underfull-matrix (- local-file-number 1))
-                        current-section))))
-    ;; Remember best pagesize.
-    (setq local-file-number (+ local-file-count best-file-number)))
-  (when (and (> (- best-file-number local-file-count) 0)
-             (< (+ (* 100 (elt (elt overfull-matrix (- (- best-file-number 1)
-                                                       local-file-count))
-                               current-section))
-                   (elt (elt underfull-matrix (- (- best-file-number 1)
-                                                 local-file-count))
-                        current-section))
-                (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
-                               current-section))
-                   (elt (elt underfull-matrix (- local-file-number 1))
-                        current-section))))
-    ;; Remember best pagesize.
-    (setq local-file-number (- best-file-number local-file-count)))
-  local-file-number)
+  (let ((calculations (length underfull-matrix))
+        (local-file-number best-file-number)
+        (local-file-count 0))
+    (while (< local-file-count calculations)
+      (when (and (<= (+ local-file-count best-file-number) calculations)
+                 (< (+ (* 100 (elt (elt overfull-matrix (+ local-file-count
+                                                           (- best-file-number 1)))
+                                   current-section))
+                       (elt (elt underfull-matrix (+ local-file-count
+                                                     (- best-file-number 1)))
+                            current-section))
+                    (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
+                                   current-section))
+                       (elt (elt underfull-matrix (- local-file-number 1))
+                            current-section))))
+        (setq local-file-number (+ local-file-count best-file-number)))
+      (when (and (> (- best-file-number local-file-count) 0)
+                 (< (+ (* 100 (elt (elt overfull-matrix (- (- best-file-number 1)
+                                                           local-file-count))
+                                   current-section))
+                       (elt (elt underfull-matrix (- (- best-file-number 1)
+                                                     local-file-count))
+                            current-section))
+                    (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
+                                   current-section))
+                       (elt (elt underfull-matrix (- local-file-number 1))
+                            current-section))))
+        (setq local-file-number (- best-file-number local-file-count)))
+      (setq local-file-count (+ 1 local-file-count)))
+    local-file-number))
 
 (defun mt-is-there-badness-p (overfull-matrix
                               underfull-matrix
