@@ -72,7 +72,7 @@ pagesize of individual sections."
            (car
             (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
           (write-file "/tmp/tmp.macro-type.end"))))
-    (mt-pdflatex)))
+    (mt-pdflatex range)))
 
 (defun mt-file-check (file)
   "Return t when file ends in .tex."
@@ -81,16 +81,16 @@ pagesize of individual sections."
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
-(defun mt-pdflatex ()
+(defun mt-pdflatex (range)
   "Starts multiple emacsen to work asynchronosly."
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
    `(lambda ()
       ;; Inject variables into new emacsen.
-      (setq mt-range ,mt-range
-            mt-margin-increase (- 0 (* 0.5 mt-range))
+      (setq range ,range
+            mt-margin-increase (- 0 (* 0.5 range))
             mt-times ,mt-start-count
-            mt-increment (/ mt-range 1.0 (max 1 (- ,mt-calculations 2))))
+            mt-increment (/ range 1.0 (max 1 (- ,mt-calculations 2))))
       ;; Save different page sizes, using echo is for speed
       (shell-command
        (concat "echo \""
@@ -127,7 +127,7 @@ pagesize of individual sections."
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations)
              (> mt-start-count 1))
-    (mt-pdflatex)))
+    (mt-pdflatex range)))
 
 (defun mt-evaluate-result (result)
   ;; Count overfull and underfull hboxes.
@@ -155,7 +155,7 @@ pagesize of individual sections."
   ;; If there are less processes than usable cores, start a new one.
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations))
-    (mt-pdflatex))
+    (mt-pdflatex mt-range))
   ;; Finish calculations.
   (when (>= mt-receive-count mt-calculations)
     (mt-inject-mdframes)
@@ -265,23 +265,32 @@ pagesize of individual sections."
                                  (+ mt-margin-increase
                                     (* (- mt-best-file 2) mt-increment)))))
         ;; Inject new margin size.
-        (shell-command
-         (concat "sed -i '" (number-to-string
-                             (nth section-count mt-section-list))
-                 " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,innertopmargin=2.1pt,skipabove=0mm,innerleftmargin="
-                 (number-to-string margin-change) "mm,innerrightmargin="
-                 (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
-                 (number-to-string mt-best-file)
-                 ".tex"))
-        (shell-command
-         (concat "sed -i '" (number-to-string
-                             (nth (+ 1 section-count) mt-section-list))
-                 " s/\\(.*\\)/\\\\end{mdframed} \\1/' /tmp/tmp.macro-type."
-                 (number-to-string mt-best-file)
-                 ".tex")))
+        (mt-write-injection (nth section-count mt-section-list)
+                            (nth (+ 1 section-count) mt-section-list)
+                            margin-change
+                            mt-best-file))
       (setq section-count (+ 1 section-count))))
   ;; Actually, they are already injected.
   (message "Injecting mdframes"))
+
+(defun mt-write-injection (this-section-line
+                           next-section-line
+                           margin-change
+                           file-number)
+  (shell-command
+   (concat "sed -i '" (number-to-string
+                       this-section-line)
+           " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,innertopmargin=2.1pt,skipabove=0mm,innerleftmargin="
+           (number-to-string margin-change) "mm,innerrightmargin="
+           (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
+           (number-to-string file-number)
+           ".tex"))
+  (shell-command
+   (concat "sed -i '" (number-to-string
+                       next-section-line)
+           " s/\\(.*\\)/\\\\end{mdframed} \\1/' /tmp/tmp.macro-type."
+           (number-to-string file-number)
+           ".tex")))
 
 (defun mt-minibuffer-message (&optional last-run)
   (concat
@@ -315,18 +324,17 @@ pagesize of individual sections."
 (defun mt-blur-mdframe (input-list best-file)
   (interactive)
   (let ((count 0)
-        (local-list))
-    (setq local-list (map 'list (lambda (x) (- x best-file)) input-list))
+        (blur (make-vector (length input-list) 0))
+        (local-list (map 'list (lambda (x) (- x best-file)) input-list)))
     (add-to-list 'local-list (nth 1 local-list) nil (lambda (x y) nil))
     (add-to-list 'local-list (nth (- (length local-list) 2) local-list)
                  t (lambda (x y) nil))
-    (setq mt-blur (make-vector (length input-list) 0))
     (while (< count (length input-list))
-      (aset mt-blur count (+ best-file (/ (+ (nth count local-list)
-                                             (nth (+ count 1) local-list)
-                                             (nth (+ count 2) local-list)) 3)))
+      (aset blur count (+ best-file (/ (+ (nth count local-list)
+                                          (nth (+ count 1) local-list)
+                                          (nth (+ count 2) local-list)) 3)))
       (setq count (+ count 1)))
-    mt-blur))
+    blur))
 
 
 (defun mt-evaluate-boxes (mt-log)
