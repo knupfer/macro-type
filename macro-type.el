@@ -1,3 +1,4 @@
+;; TODO: Comments, refactor, functional
 ;;; macro-type.el --- optimize margins of tex-files
 
 ;; Copyright (C) 2014 Florian Knupfer
@@ -22,10 +23,14 @@
 (require 'async)
 
 (defun mt-macro-type-tex-file (file range times cores)
+  "Change the pagesize of a tex file to optimize it.
+It compiles a lot of times the same file and looks at the log files to minimize
+overfull and underfull hboxes.  Afterwards, it uses mdframes to alter the
+pagesize of individual sections."
   (interactive (list (read-file-name
                       "Choose a .tex file: " nil nil t nil 'mt-file-check)
                      (read-number
-                      "How many mm may the page shrink: " 0.5)
+                      "How many mm may the size change: " 0.5)
                      (read-number
                       "How many times you would like to compile: " 25)
                      (read-number
@@ -41,6 +46,7 @@
           mt-result-file file
           mt-benchmark (current-time)
           mt-current-count 1
+          ;; Get line numbers of sections, including begin and end document.
           mt-section-list
           (map 'list 'string-to-number
                (split-string
@@ -52,6 +58,7 @@
           mt-section-overfull-vector (make-vector (length mt-section-list) 0)
           mt-all-underfull-vector (make-vector times 0)
           mt-all-overfull-vector (make-vector times 0))
+    ;; Save the header and the body of the tex file to access them faster
     (with-temp-buffer
       (insert-file-contents file)
       (let ((this-buffer (buffer-string)))
@@ -67,33 +74,24 @@
           (write-file "/tmp/tmp.macro-type.end"))))
     (mt-pdflatex)))
 
-(defun mt-error-in-section ()
-  (interactive)
-  (setq mt-flawed-sections nil)
-  (mapc (lambda (this-error)
-          (let ((error-section 0))
-            (mapc (lambda (this-section)
-                    (when (< this-section this-error)
-                      (setq error-section this-section)))
-                  mt-section-list)
-            (when error-section
-              (add-to-list 'mt-flawed-sections error-section))))
-        mt-error-list))
-
 (defun mt-file-check (file)
+  "Return t when file ends in .tex."
   (with-temp-buffer
     (insert file)
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
 (defun mt-pdflatex ()
+  "Starts multiple emacsen to work asynchronosly."
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
    `(lambda ()
+      ;; Inject variables into new emacsen.
       (setq mt-range ,mt-range
             mt-margin-increase (- 0 (* 0.5 mt-range))
             mt-times ,mt-start-count
             mt-increment (/ mt-range 1.0 (max 1 (- ,mt-calculations 2))))
+      ;; Save different page sizes, using echo is for speed
       (shell-command
        (concat "echo \""
                (when (> mt-times 1)
@@ -108,6 +106,8 @@
                "\n\\begin{document} \" > "
                (concat "/tmp/tmp.macro-type.header."
                        (number-to-string mt-times) ".tex")))
+      ;; Concatenate parts of the file, compile it and return log as string.
+      ;; Doing this in emacs buffers is very slow.
       (shell-command-to-string
        (concat "cat"
                " /tmp/tmp.macro-type.begin"
@@ -120,35 +120,43 @@
                " -draftmode"
                " -interaction nonstopmode /tmp/tmp.macro-type."
                (number-to-string ,mt-start-count) ".tex")))
+   ;; Analyze the result of the async process.
    'mt-evaluate-result)
+  ;; If there are less processes than usable cores, start a new one.
+  ;; TODO: start all processes at the same time.
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations)
              (> mt-start-count 1))
     (mt-pdflatex)))
 
 (defun mt-evaluate-result (result)
+  ;; Count overfull and underfull hboxes.
   (mt-evaluate-boxes result)
+  ;; Make a matrix of the badness of all sections with all sizes.
   (aset mt-all-underfull-vector
         (- mt-current-count 1) (copy-sequence mt-section-underfull-vector))
   (aset mt-all-overfull-vector
         (- mt-current-count 1) (copy-sequence mt-section-overfull-vector))
+  ;; Remember the best page size.
   (if (> mt-current-count 1)
       (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
                (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
         (setq mt-best-overfull-boxes mt-overfull-boxes
               mt-best-underfull-boxes mt-underfull-boxes
-              mt-best-file mt-current-count
-              mt-error-list mt-error-positions))
+              mt-best-file mt-current-count))
+    ;; Set initial badness.
     (setq mt-init-overfull-boxes mt-overfull-boxes
           mt-best-overfull-boxes mt-overfull-boxes
           mt-init-underfull-boxes mt-underfull-boxes
-          mt-best-underfull-boxes mt-underfull-boxes
-          mt-error-list mt-error-positions))
+          mt-best-underfull-boxes mt-underfull-boxes))
   (setq mt-receive-count (+ mt-receive-count 1))
+  ;; Show the current state.
   (message (mt-minibuffer-message))
+  ;; If there are less processes than usable cores, start a new one.
   (when (and (< (- mt-start-count mt-receive-count) mt-forks)
              (< mt-start-count mt-calculations))
     (mt-pdflatex))
+  ;; Finish calculations.
   (when (>= mt-receive-count mt-calculations)
     (mt-inject-mdframes)
     (shell-command
@@ -161,6 +169,7 @@
              " -interaction nonstopmode "
              (car (split-string mt-result-file "\.tex$"))
              ".macro-type.tex > /dev/null" ))
+    ;; Recalculate badness after mdframe injection.
     (with-temp-buffer
       (insert-file (concat
                     (car (split-string mt-result-file "\.tex$"))
@@ -170,25 +179,30 @@
              (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
       (setq mt-best-overfull-boxes mt-overfull-boxes
             mt-best-underfull-boxes mt-underfull-boxes
-            mt-best-file mt-current-count
-            mt-error-list mt-error-positions))
+            mt-best-file mt-current-count))
+    ;; Show the result.
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
+  "Change pagesize for sections."
   (let ((section-count 0)
         (margin-change 0)
         (local-file mt-best-file)
         (local-file-count 0))
+    ;; Do this for every section.
     (while (< section-count (- (length mt-section-list) 1))
       (setq local-file-count 0
             local-file mt-best-file
             margin-change 0)
+      ;; Calculate only when there is badness.
       (when (> (+ (* 100 (elt (elt mt-all-overfull-vector (- mt-best-file 1))
                               section-count))
                   (elt (elt mt-all-underfull-vector
                             (- mt-best-file 1))
                        section-count)) 0)
+        ;; Look at all alternative pagesizes.
         (while (< local-file-count mt-calculations)
+          ;; Look at lesser pagesizes.
           (when (<= (+ local-file-count mt-best-file) mt-calculations)
             (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
                                          (+ local-file-count
@@ -204,6 +218,7 @@
                                   (- local-file 1))
                              section-count)))
               (setq local-file (+ local-file-count mt-best-file))))
+          ;; Look at greater pagesizes.
           (when (> (- mt-best-file local-file-count) 0)
             (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
                                          (- (- mt-best-file 1)
@@ -218,8 +233,10 @@
                         (elt (elt mt-all-underfull-vector
                                   (- local-file 1))
                              section-count)))
+              ;; Remember best pagesize.
               (setq local-file (- mt-best-file local-file-count))))
           (setq local-file-count (+ local-file-count 1)))
+        ;; Calculate change of the margins, considering already changed size.
         (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
         (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
         (setq margin-change (if (= local-file 1)
@@ -229,6 +246,7 @@
                                     (* (- local-file 2) mt-increment))
                                  (+ mt-margin-increase
                                     (* (- mt-best-file 2) mt-increment)))))
+        ;; Inject new margin size.
         (shell-command
          (concat "sed -i '" (number-to-string
                              (nth section-count mt-section-list))
@@ -244,6 +262,7 @@
                  (number-to-string mt-best-file)
                  ".tex")))
       (setq section-count (+ 1 section-count))))
+  ;; Actually, they are already injected.
   (message "Injecting mdframes"))
 
 (defun mt-minibuffer-message (&optional last-run)
@@ -278,17 +297,17 @@
 (defun mt-evaluate-boxes (mt-log)
   (setq mt-underfull-boxes 0)
   (setq mt-overfull-boxes 0)
-  (setq mt-error-positions nil)
   (fillarray mt-section-underfull-vector 0)
   (fillarray mt-section-overfull-vector 0)
   (with-temp-buffer
     (insert mt-log)
     (goto-char (point-min))
+    ;; Sum up all overfull hboxes.
     (while (re-search-forward
             "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*lines \\([[:digit:]]+\\)" nil t)
       (setq mt-overfull-boxes
             (+ mt-overfull-boxes (string-to-number (match-string 1))))
-      (add-to-list 'mt-error-positions (string-to-number (match-string 2)))
+      ;; Add to the corresponding section.
       (let ((local-count 0))
         (while (and (< local-count (length mt-section-list))
                     (< (nth local-count mt-section-list)
@@ -298,11 +317,12 @@
               (+ (string-to-number (match-string 1))
                  (elt mt-section-overfull-vector (- local-count 1))))))
     (goto-char (point-min))
+    ;; Sum up all underfull hboxes.
     (while (re-search-forward
             "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*lines \\([[:digit:]]+\\)" nil t)
       (setq mt-underfull-boxes
             (+ mt-underfull-boxes (string-to-number (match-string 1))))
-      (add-to-list 'mt-error-positions (string-to-number (match-string 2)))
+      ;; Add to the corresponding section.
       (let ((local-count 0))
         (while (and (< local-count (length mt-section-list))
                     (< (nth local-count mt-section-list)
@@ -311,5 +331,10 @@
         (aset mt-section-underfull-vector (- local-count 1)
               (+ (string-to-number (match-string 1))
                  (elt mt-section-underfull-vector (- local-count 1))))))
+    ;; Lookup the file name of the analysed log.
     (when (re-search-forward "Transcript written on /tmp/tmp\.macro-type\.\\([[:digit:]]+\\)\.log" nil t)
       (setq mt-current-count (string-to-number (match-string 1))))))
+
+(provide 'macro-type)
+
+;;; macro-type.el ends here
