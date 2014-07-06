@@ -1,4 +1,4 @@
-;; TODO: Comments, refactor, functional
+;; TODO: refactor, functional, smooth mdframes out
 ;;; macro-type.el --- optimize margins of tex-files
 
 ;; Copyright (C) 2014 Florian Knupfer
@@ -178,13 +178,14 @@ pagesize of individual sections."
     (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
              (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
       (setq mt-best-overfull-boxes mt-overfull-boxes
-            mt-best-underfull-boxes mt-underfull-boxes
-            mt-best-file mt-current-count))
+            mt-best-underfull-boxes mt-underfull-boxes))
     ;; Show the result.
     (message (mt-minibuffer-message t))))
 
 (defun mt-inject-mdframes ()
   "Change pagesize for sections."
+  (setq mt-used-calculation-vector
+        (make-vector (- (length mt-section-list) 1) mt-best-file))
   (let ((section-count 0)
         (margin-change 0)
         (local-file mt-best-file)
@@ -217,7 +218,9 @@ pagesize of individual sections."
                         (elt (elt mt-all-underfull-vector
                                   (- local-file 1))
                              section-count)))
-              (setq local-file (+ local-file-count mt-best-file))))
+              ;; Remember best pagesize.
+              (setq local-file (+ local-file-count mt-best-file))
+              (aset mt-used-calculation-vector section-count local-file)))
           ;; Look at greater pagesizes.
           (when (> (- mt-best-file local-file-count) 0)
             (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
@@ -234,8 +237,10 @@ pagesize of individual sections."
                                   (- local-file 1))
                              section-count)))
               ;; Remember best pagesize.
-              (setq local-file (- mt-best-file local-file-count))))
+              (setq local-file (- mt-best-file local-file-count))
+              (aset mt-used-calculation-vector section-count local-file)))
           (setq local-file-count (+ local-file-count 1)))
+
         ;; Calculate change of the margins, considering already changed size.
         (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
         (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
@@ -293,6 +298,23 @@ pagesize of individual sections."
     output: " (car (split-string mt-result-file "\.tex$"))
     ".macro-type.*  calculated in "
     (format-time-string "%s" (time-since mt-benchmark)) "s"))))
+
+(defun mt-blur-mdframe (input-list best-file)
+  (interactive)
+  (let ((count 0)
+        (local-list))
+    (setq local-list (map 'list (lambda (x) (- x best-file)) input-list))
+    (add-to-list 'local-list (nth 1 local-list) nil (lambda (x y) nil))
+    (add-to-list 'local-list (nth (- (length local-list) 2) local-list)
+                 t (lambda (x y) nil))
+    (setq mt-blur (make-vector (length input-list) 0))
+    (while (< count (length input-list))
+      (aset mt-blur count (/ (+ (nth count local-list)
+                                (nth (+ count 1) local-list)
+                                (nth (+ count 2) local-list)) 3))
+      (setq count (+ count 1)))
+    mt-blur))
+
 
 (defun mt-evaluate-boxes (mt-log)
   (setq mt-underfull-boxes 0)
