@@ -184,15 +184,14 @@ pagesize of individual sections."
 
 (defun mt-inject-mdframes ()
   "Change pagesize for sections."
-  (setq mt-used-calculation-vector
-        (make-vector (- (length mt-section-list) 1) mt-best-file))
-  (setq mt-blur-vector
-        (make-vector (- (length mt-section-list) 1) mt-best-file))
-  (let ((section-count 0)
-        (margin-change 0)
+  (let ((section-count 0) 
         (local-file mt-best-file)
         (local-file-count 0)
-        (blur-count 0))
+        (blur-count 0)
+        (mt-blur-vector (make-vector (- (length mt-section-list) 1)
+                                     mt-best-file))
+        (mt-used-calculation-vector
+         (make-vector (- (length mt-section-list) 1) mt-best-file)))
     (while (< blur-count 3)
       (setq blur-count (+ blur-count 1)
             section-count 0
@@ -202,8 +201,7 @@ pagesize of individual sections."
       (while (< section-count (- (length mt-section-list) 1))
         (setq local-file-count 0
               local-file (elt mt-blur-vector section-count)
-              mt-best-file-tmp (elt mt-blur-vector section-count)
-              margin-change 0)
+              mt-best-file-tmp (elt mt-blur-vector section-count))
         ;; Calculate only when there is badness.
         (when (mt-is-there-badness-p mt-all-overfull-vector
                                      mt-all-underfull-vector
@@ -212,7 +210,6 @@ pagesize of individual sections."
           ;; Look at all alternative pagesizes.
           (while (< local-file-count mt-calculations)
             ;; Look at lesser pagesizes.
-
             (setq local-file
                   (mt-nearest-good-file-number local-file-count
                                                local-file
@@ -222,31 +219,13 @@ pagesize of individual sections."
                                                mt-calculations
                                                section-count))
             (aset mt-used-calculation-vector section-count local-file)
-
-            ;; Look at greater pagesizes.
-            (when (and (> (- mt-best-file-tmp local-file-count) 0)
-                       (< (+ (* 100 (elt (elt mt-all-overfull-vector
-                                              (- (- mt-best-file-tmp 1)
-                                                 local-file-count))
-                                         section-count))
-                             (elt (elt mt-all-underfull-vector
-                                       (- (- mt-best-file-tmp 1) local-file-count))
-                                  section-count))
-                          (+ (* 100 (elt (elt mt-all-overfull-vector
-                                              (- local-file 1))
-                                         section-count))
-                             (elt (elt mt-all-underfull-vector
-                                       (- local-file 1))
-                                  section-count))))
-              ;; Remember best pagesize.
-              (setq local-file (- mt-best-file-tmp local-file-count))
-              (aset mt-used-calculation-vector section-count local-file))
             (setq local-file-count (+ local-file-count 1))))
         (setq section-count (+ 1 section-count))))
     (setq section-count 0)
     (while (< section-count (- (length mt-section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
-      (when (not (= local-file mt-best-file))
+      (when (not (= (elt mt-used-calculation-vector section-count)
+                    mt-best-file))
         ;; Inject new margin size.
         (mt-write-injection (nth section-count mt-section-list)
                             (nth (+ 1 section-count) mt-section-list)
@@ -268,23 +247,33 @@ pagesize of individual sections."
                                     calculations
                                     current-section)
 
-  (if (and (<= (+ local-file-count best-file-number) calculations)
-           (< (+ (* 100 (elt (elt overfull-matrix
-                                  (+ local-file-count
-                                     (- best-file-number 1)))
-                             current-section))
-                 (elt (elt underfull-matrix
-                           (+ local-file-count (- best-file-number 1)))
-                      current-section))
-              (+ (* 100 (elt (elt overfull-matrix
-                                  (- local-file-number 1))
-                             current-section))
-                 (elt (elt underfull-matrix
-                           (- local-file-number 1))
-                      current-section))))
-      ;; Remember best pagesize.
-      (+ local-file-count best-file-number)
-    local-file-number))
+  (when (and (<= (+ local-file-count best-file-number) calculations)
+             (< (+ (* 100 (elt (elt overfull-matrix (+ local-file-count
+                                                       (- best-file-number 1)))
+                               current-section))
+                   (elt (elt underfull-matrix (+ local-file-count
+                                                 (- best-file-number 1)))
+                        current-section))
+                (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
+                               current-section))
+                   (elt (elt underfull-matrix (- local-file-number 1))
+                        current-section))))
+    ;; Remember best pagesize.
+    (setq local-file-number (+ local-file-count best-file-number)))
+  (when (and (> (- best-file-number local-file-count) 0)
+             (< (+ (* 100 (elt (elt overfull-matrix (- (- best-file-number 1)
+                                                       local-file-count))
+                               current-section))
+                   (elt (elt underfull-matrix (- (- best-file-number 1)
+                                                 local-file-count))
+                        current-section))
+                (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
+                               current-section))
+                   (elt (elt underfull-matrix (- local-file-number 1))
+                        current-section))))
+    ;; Remember best pagesize.
+    (setq local-file-number (- best-file-number local-file-count)))
+  local-file-number)
 
 (defun mt-is-there-badness-p (overfull-matrix
                               underfull-matrix
