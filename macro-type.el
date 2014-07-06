@@ -193,7 +193,7 @@ pagesize of individual sections."
         (local-file mt-best-file)
         (local-file-count 0)
         (blur-count 0))
-    (while (< blur-count 5)
+    (while (< blur-count 3)
       (setq blur-count (+ blur-count 1)
             section-count 0
             mt-blur-vector (mt-blur-mdframe mt-used-calculation-vector mt-best-file)
@@ -250,37 +250,35 @@ pagesize of individual sections."
                 (aset mt-used-calculation-vector section-count local-file)))
             (setq local-file-count (+ local-file-count 1))))
         (setq section-count (+ 1 section-count))))
-
     (setq section-count 0)
     (while (< section-count (- (length mt-section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
       (setq local-file (elt mt-used-calculation-vector section-count))
-      (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
-      (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
-      (setq margin-change (if (= local-file 1)
-                              (* -1 (+ mt-margin-increase
-                                       (* (- mt-best-file 2) mt-increment)))
-                            (- (+ mt-margin-increase
-                                  (* (- local-file 2) mt-increment))
-                               (+ mt-margin-increase
-                                  (* (- mt-best-file 2) mt-increment)))))
-      ;; Inject new margin size.
-      
-      
-      (shell-command
-       (concat "sed -i '" (number-to-string
-                           (nth section-count mt-section-list))
-               " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,skipabove=0mm,innerleftmargin="
-               (number-to-string margin-change) "mm,innerrightmargin="
-               (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
-               (number-to-string mt-best-file)
-               ".tex"))
-      (shell-command
-       (concat "sed -i '" (number-to-string
-                           (- (nth (+ 1 section-count) mt-section-list) 1))
-               " s/\\(.*\\)/\\1 \\\\end{mdframed}/' /tmp/tmp.macro-type."
-               (number-to-string mt-best-file)
-               ".tex"))
+      (when (not (= local-file mt-best-file))
+        (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
+        (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
+        (setq margin-change (if (= local-file 1)
+                                (* -1 (+ mt-margin-increase
+                                         (* (- mt-best-file 2) mt-increment)))
+                              (- (+ mt-margin-increase
+                                    (* (- local-file 2) mt-increment))
+                                 (+ mt-margin-increase
+                                    (* (- mt-best-file 2) mt-increment)))))
+        ;; Inject new margin size.
+        (shell-command
+         (concat "sed -i '" (number-to-string
+                             (nth section-count mt-section-list))
+                 " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,innertopmargin=2.1pt,skipabove=0mm,innerleftmargin="
+                 (number-to-string margin-change) "mm,innerrightmargin="
+                 (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
+                 (number-to-string mt-best-file)
+                 ".tex"))
+        (shell-command
+         (concat "sed -i '" (number-to-string
+                             (nth (+ 1 section-count) mt-section-list))
+                 " s/\\(.*\\)/\\\\end{mdframed} \\1/' /tmp/tmp.macro-type."
+                 (number-to-string mt-best-file)
+                 ".tex")))
       (setq section-count (+ 1 section-count))))
   ;; Actually, they are already injected.
   (message "Injecting mdframes"))
