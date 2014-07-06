@@ -40,8 +40,8 @@
           mt-best-file 1
           mt-result-file file
           mt-benchmark (current-time)
-          mt-section-list
           mt-current-count 1
+          mt-section-list
           (map 'list 'string-to-number
                (split-string
                 (shell-command-to-string
@@ -165,9 +165,7 @@
       (insert-file (concat
                     (car (split-string mt-result-file "\.tex$"))
                     ".macro-type.log"))
-      (setq mt-debug (buffer-string))
       (mt-evaluate-boxes (buffer-string)))
-    (message "debugg")
     (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
              (+ (* 100 mt-overfull-boxes) mt-underfull-boxes))
       (setq mt-best-overfull-boxes mt-overfull-boxes
