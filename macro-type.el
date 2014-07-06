@@ -205,92 +205,130 @@ pagesize of individual sections."
               mt-best-file-tmp (elt mt-blur-vector section-count)
               margin-change 0)
         ;; Calculate only when there is badness.
-        (when (> (+ (* 100 (elt (elt mt-all-overfull-vector (- mt-best-file-tmp 1))
-                                section-count))
-                    (elt (elt mt-all-underfull-vector
-                              (- mt-best-file-tmp 1))
-                         section-count)) 0)
+        (when (mt-is-there-badness-p mt-all-overfull-vector
+                                     mt-all-underfull-vector
+                                     mt-best-file-tmp
+                                     section-count)
           ;; Look at all alternative pagesizes.
           (while (< local-file-count mt-calculations)
             ;; Look at lesser pagesizes.
-            (when (<= (+ local-file-count mt-best-file-tmp) mt-calculations)
-              (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
-                                           (+ local-file-count
-                                              (- mt-best-file-tmp 1)))
-                                      section-count))
-                          (elt (elt mt-all-underfull-vector
-                                    (+ local-file-count (- mt-best-file-tmp 1)))
-                               section-count))
-                       (+ (* 100 (elt (elt mt-all-overfull-vector
-                                           (- local-file 1))
-                                      section-count))
-                          (elt (elt mt-all-underfull-vector
-                                    (- local-file 1))
-                               section-count)))
-                ;; Remember best pagesize.
-                (setq local-file (+ local-file-count mt-best-file-tmp))
-                (aset mt-used-calculation-vector section-count local-file)))
+
+            (setq local-file
+                  (mt-nearest-good-file-number local-file-count
+                                               local-file
+                                               mt-best-file-tmp
+                                               mt-all-underfull-vector
+                                               mt-all-overfull-vector
+                                               mt-calculations
+                                               section-count))
+            (aset mt-used-calculation-vector section-count local-file)
+
             ;; Look at greater pagesizes.
-            (when (> (- mt-best-file-tmp local-file-count) 0)
-              (when (< (+ (* 100 (elt (elt mt-all-overfull-vector
-                                           (- (- mt-best-file-tmp 1)
-                                              local-file-count))
-                                      section-count))
-                          (elt (elt mt-all-underfull-vector
-                                    (- (- mt-best-file-tmp 1) local-file-count))
-                               section-count))
-                       (+ (* 100 (elt (elt mt-all-overfull-vector
-                                           (- local-file 1))
-                                      section-count))
-                          (elt (elt mt-all-underfull-vector
-                                    (- local-file 1))
-                               section-count)))
-                ;; Remember best pagesize.
-                (setq local-file (- mt-best-file-tmp local-file-count))
-                (aset mt-used-calculation-vector section-count local-file)))
+            (when (and (> (- mt-best-file-tmp local-file-count) 0)
+                       (< (+ (* 100 (elt (elt mt-all-overfull-vector
+                                              (- (- mt-best-file-tmp 1)
+                                                 local-file-count))
+                                         section-count))
+                             (elt (elt mt-all-underfull-vector
+                                       (- (- mt-best-file-tmp 1) local-file-count))
+                                  section-count))
+                          (+ (* 100 (elt (elt mt-all-overfull-vector
+                                              (- local-file 1))
+                                         section-count))
+                             (elt (elt mt-all-underfull-vector
+                                       (- local-file 1))
+                                  section-count))))
+              ;; Remember best pagesize.
+              (setq local-file (- mt-best-file-tmp local-file-count))
+              (aset mt-used-calculation-vector section-count local-file))
             (setq local-file-count (+ local-file-count 1))))
         (setq section-count (+ 1 section-count))))
     (setq section-count 0)
     (while (< section-count (- (length mt-section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
-      (setq local-file (elt mt-used-calculation-vector section-count))
       (when (not (= local-file mt-best-file))
-        (setq mt-margin-increase (- 0 (* 0.5 mt-range)))
-        (setq mt-increment (/ mt-range 1.0 (max 1 (- mt-calculations 2))))
-        (setq margin-change (if (= local-file 1)
-                                (* -1 (+ mt-margin-increase
-                                         (* (- mt-best-file 2) mt-increment)))
-                              (- (+ mt-margin-increase
-                                    (* (- local-file 2) mt-increment))
-                                 (+ mt-margin-increase
-                                    (* (- mt-best-file 2) mt-increment)))))
         ;; Inject new margin size.
         (mt-write-injection (nth section-count mt-section-list)
                             (nth (+ 1 section-count) mt-section-list)
-                            margin-change
+                            (mt-calculate-margin-change mt-range
+                                                        mt-calculations
+                                                        (elt mt-used-calculation-vector
+                                                             section-count)
+                                                        mt-best-file)
                             mt-best-file))
       (setq section-count (+ 1 section-count))))
   ;; Actually, they are already injected.
   (message "Injecting mdframes"))
 
+(defun mt-nearest-good-file-number (local-file-count
+                                    local-file-number
+                                    best-file-number
+                                    underfull-matrix
+                                    overfull-matrix
+                                    calculations
+                                    current-section)
+
+  (if (and (<= (+ local-file-count best-file-number) calculations)
+           (< (+ (* 100 (elt (elt overfull-matrix
+                                  (+ local-file-count
+                                     (- best-file-number 1)))
+                             current-section))
+                 (elt (elt underfull-matrix
+                           (+ local-file-count (- best-file-number 1)))
+                      current-section))
+              (+ (* 100 (elt (elt overfull-matrix
+                                  (- local-file-number 1))
+                             current-section))
+                 (elt (elt underfull-matrix
+                           (- local-file-number 1))
+                      current-section))))
+      ;; Remember best pagesize.
+      (+ local-file-count best-file-number)
+    local-file-number))
+
+(defun mt-is-there-badness-p (overfull-matrix
+                              underfull-matrix
+                              best-file-number
+                              current-section)
+  (> (+ (* 100 (elt (elt overfull-matrix (- best-file-number 1))
+                    current-section))
+        (elt (elt underfull-matrix
+                  (- best-file-number 1))
+             current-section)) 0))
+
+
+(defun mt-calculate-margin-change (range
+                                   calculations
+                                   local-file-number
+                                   best-file-number)
+  (let ((margin-increase (* -0.5 range))
+        (increment (/ range 1.0 (max 1 (- calculations 2)))))
+    (if (= local-file-number 1)
+        (* -1 (+ margin-increase
+                 (* (- best-file-number 2) increment)))
+      (- (+ margin-increase
+            (* (- local-file-number 2) increment))
+         (+ margin-increase
+            (* (- best-file-number 2) increment))))))
+
 (defun mt-write-injection (this-section-line
                            next-section-line
                            margin-change
                            file-number)
-  (shell-command
-   (concat "sed -i '" (number-to-string
-                       this-section-line)
-           " s/\\(.*\\)/\\1 \\\\begin{mdframed}[backgroundcolor=theme,hidealllines=true,innertopmargin=2.1pt,skipabove=0mm,innerleftmargin="
-           (number-to-string margin-change) "mm,innerrightmargin="
-           (number-to-string margin-change) "mm]/' /tmp/tmp.macro-type."
-           (number-to-string file-number)
-           ".tex"))
-  (shell-command
-   (concat "sed -i '" (number-to-string
-                       next-section-line)
-           " s/\\(.*\\)/\\\\end{mdframed} \\1/' /tmp/tmp.macro-type."
-           (number-to-string file-number)
-           ".tex")))
+  (shell-command (concat "sed -i '" (number-to-string this-section-line)
+                         " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
+                         "[backgroundcolor=theme,hidealllines=true,"
+                         "innertopmargin=2.1pt,skipabove=0mm,"
+                         "innerleftmargin="
+                         (number-to-string margin-change) "mm,"
+                         "innerrightmargin="
+                         (number-to-string margin-change) "mm]"
+                         "/' /tmp/tmp.macro-type."
+                         (number-to-string file-number) ".tex"))
+  (shell-command (concat "sed -i '" (number-to-string next-section-line)
+                         " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
+                         "/tmp/tmp.macro-type."
+                         (number-to-string file-number) ".tex")))
 
 (defun mt-minibuffer-message (&optional last-run)
   (concat
