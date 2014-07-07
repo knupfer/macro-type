@@ -80,7 +80,9 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         ;; Save different page sizes, using echo is for speed
         (shell-command
          (concat "echo \"\\usepackage{mdframed}"
-                 (when (> local-count 1)
+                 (when (and (> local-count 1)
+                            (or (>= size 0.0001)
+                                (<= size -0.0001)))
                    (concat
                     "\\addtolength"
                     "{\\oddsidemargin}{" (number-to-string size) "mm}"
@@ -252,20 +254,22 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                            next-section-line
                            margin-change
                            file-number)
-  (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                         " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
-                         "[hidealllines=true,"
-                         "innertopmargin=2.1pt,skipabove=0mm,"
-                         "innerleftmargin="
-                         (number-to-string margin-change) "mm,"
-                         "innerrightmargin="
-                         (number-to-string margin-change) "mm]"
-                         "/' /tmp/tmp.macro-type."
-                         (number-to-string file-number) ".tex"))
-  (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                         " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
-                         "/tmp/tmp.macro-type."
-                         (number-to-string file-number) ".tex")))
+  (when (or (>= margin-change 0.0001)
+            (<= margin-change -0.0001))
+    (shell-command (concat "sed -i '" (number-to-string this-section-line)
+                           " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
+                           "[hidealllines=true,"
+                           "innertopmargin=2.1pt,skipabove=0mm,"
+                           "innerleftmargin="
+                           (number-to-string margin-change) "mm,"
+                           "innerrightmargin="
+                           (number-to-string margin-change) "mm]"
+                           "/' /tmp/tmp.macro-type."
+                           (number-to-string file-number) ".tex"))
+    (shell-command (concat "sed -i '" (number-to-string next-section-line)
+                           " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
+                           "/tmp/tmp.macro-type."
+                           (number-to-string file-number) ".tex"))))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (length section-list) 0)))
