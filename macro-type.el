@@ -95,7 +95,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                          (number-to-string local-count) ".tex")))
         ;; Concatenate parts of the file, compile it and return log as string.
         ;; Doing this in emacs buffers is very slow.
-        (shell-command-to-string
+        (shell-command
          (concat "cat"
                  " /tmp/tmp.macro-type.begin"
                  " /tmp/tmp.macro-type.header."
@@ -106,9 +106,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                  " -output-directory /tmp"
                  " -draftmode"
                  " -interaction nonstopmode /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex"))))
+                 (number-to-string local-count) ".tex"
+                 " > /dev/null"))))
    ;; Analyze the result of the async process.
-   `(lambda (result) (mt-evaluate-result result ,file ,forks ,calculations)))
+   `(lambda (result) (mt-evaluate-result ,mt-start-count ,file ,forks ,calculations)))
   ;; If there are less processes than usable cores, start a new one.
   ;; TODO: start all processes at the same time.
   (when (and (< (- mt-start-count mt-receive-count) forks)
@@ -116,11 +117,14 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
              (> mt-start-count 1))
     (mt-pdflatex range file forks calculations)))
 
-(defun mt-evaluate-result (result file forks calculations)
+(defun mt-evaluate-result (current-count file forks calculations)
   ;; Count overfull and underfull hboxes.
   (let ((underfull-boxes 0)
         (overfull-boxes 0)
-        (current-count (mt-extract-file-number result)))
+        (result nil))
+    (with-temp-buffer
+      (insert-file-contents (concat "/tmp/tmp.macro-type." (number-to-string current-count) ".log"))
+      (setq result (buffer-string)))
     ;; Make a matrix of the badness of all sections with all sizes.
     (aset mt-underfull-matrix
           (- current-count 1)
@@ -279,8 +283,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       (while (re-search-forward error-search-string nil t)
         (let ((local-count 0))
           (while (and (< local-count (length section-list))
-                      (< (nth local-count section-list)
-                         (string-to-number (match-string 2))))
+                      (<= (nth local-count section-list)
+                          (string-to-number (match-string 2))))
             (setq local-count (+ local-count 1)))
           (aset error-vector (- local-count 1)
                 (+ (string-to-number (match-string 1))
@@ -293,15 +297,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (insert file)
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
-
-(defun mt-extract-file-number (input)
-  (with-temp-buffer
-    (insert input)
-    (goto-char (point-min))
-    (when (re-search-forward
-           "Transcript written on /tmp/tmp\.macro-type\.\\([0-9]+\\)\.log"
-           nil t)
-      (string-to-number (match-string 1)))))
 
 (defun mt-nearest-good-file-number (best-file-number
                                     underfull-matrix
@@ -405,7 +400,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     ".macro-type.*"))))
 
 (defun mt-blur-mdframe (input-list best-file)
-  (interactive)
   (let ((count 0)
         (blur (make-vector (length input-list) 0))
         (local-list (map 'list (lambda (x) (- x best-file)) input-list)))
