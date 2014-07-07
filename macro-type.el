@@ -22,11 +22,11 @@
 ;;; Code:
 (require 'async)
 
-(defun mt-macro-type-tex-file (file range times cores)
+(defun mt-macro-type-tex-file (file range calculations forks)
   "Change the pagesize of a tex file to optimize it.
-It compiles a lot of times the same file and looks at the log files to minimize
-overfull and underfull hboxes.  Afterwards, it uses mdframes to alter the
-pagesize of individual sections."
+It compiles a lot of times the same file and looks at the log files to
+minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
+ alter the pagesize of individual sections."
   (interactive (list (read-file-name
                       "Choose a .tex file: " nil nil t nil 'mt-file-check)
                      (read-number
@@ -39,8 +39,6 @@ pagesize of individual sections."
       (error "You can't choose a directory")
     (setq mt-receive-count 0
           mt-start-count 0
-          mt-calculations times
-          mt-forks cores
           mt-range range
           mt-best-file 1
           ;; Get line numbers of sections, including begin and end document.
@@ -51,8 +49,8 @@ pagesize of individual sections."
                  (concat
                   "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
                   file " | grep -o ^[0-9]*"))))
-          mt-underfull-matrix (make-vector times 0)
-          mt-overfull-matrix (make-vector times 0))
+          mt-underfull-matrix (make-vector calculations 0)
+          mt-overfull-matrix (make-vector calculations 0))
     ;; Save the header and the body of the tex file to access them faster
     (with-temp-buffer
       (insert-file-contents file)
@@ -67,81 +65,75 @@ pagesize of individual sections."
            (car
             (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
           (write-file "/tmp/tmp.macro-type.end"))))
-    (mt-pdflatex range file)))
+    (mt-pdflatex range file forks calculations)))
 
-(defun mt-file-check (file)
-  "Return t when file ends in .tex."
-  (with-temp-buffer
-    (insert file)
-    (goto-char (point-min))
-    (re-search-forward "/$\\|\\.tex$" nil t)))
-
-(defun mt-pdflatex (range file)
+(defun mt-pdflatex (range file forks calculations)
   "Starts multiple emacsen to work asynchronosly."
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
    `(lambda ()
       ;; Inject variables into new emacsen.
-      (setq range ,range
-            mt-margin-increase (- 0 (* 0.5 range))
-            mt-times ,mt-start-count
-            mt-increment (/ range 1.0 (max 1 (- ,mt-calculations 2))))
-      ;; Save different page sizes, using echo is for speed
-      (shell-command
-       (concat "echo \""
-               (when (> mt-times 1)
-                 (let ((size (+ mt-margin-increase
-                                (* (- mt-times 2) mt-increment))))
+      (let* ((local-count ,mt-start-count)
+             (size (+ (* -0.5 ,range)
+                      (* (- local-count 2)
+                         (/ ,range 1.0 (max 1 (- ,calculations 2)))))))
+        ;; Save different page sizes, using echo is for speed
+        (shell-command
+         (concat "echo \"\\usepackage{mdframed}"
+                 (when (> local-count 1)
                    (concat
-                    "\\usepackage{mdframed}"
                     "\\addtolength"
                     "{\\oddsidemargin}{" (number-to-string size) "mm}"
                     "\\addtolength"
                     "{\\evensidemargin}{" (number-to-string size) "mm}"
                     "\\addtolength"
-                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}")))
-               "\n\\begin{document} \" > "
-               (concat "/tmp/tmp.macro-type.header."
-                       (number-to-string mt-times) ".tex")))
-      ;; Concatenate parts of the file, compile it and return log as string.
-      ;; Doing this in emacs buffers is very slow.
-      (shell-command-to-string
-       (concat "cat"
-               " /tmp/tmp.macro-type.begin"
-               " /tmp/tmp.macro-type.header."
-               (number-to-string ,mt-start-count) ".tex"
-               " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
-               (number-to-string ,mt-start-count) ".tex;"
-               "pdflatex"
-               " -output-directory /tmp"
-               " -draftmode"
-               " -interaction nonstopmode /tmp/tmp.macro-type."
-               (number-to-string ,mt-start-count) ".tex")))
+                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
+                 "\n\\begin{document} \" > "
+                 (concat "/tmp/tmp.macro-type.header."
+                         (number-to-string local-count) ".tex")))
+        ;; Concatenate parts of the file, compile it and return log as string.
+        ;; Doing this in emacs buffers is very slow.
+        (shell-command-to-string
+         (concat "cat"
+                 " /tmp/tmp.macro-type.begin"
+                 " /tmp/tmp.macro-type.header."
+                 (number-to-string local-count) ".tex"
+                 " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".tex;"
+                 "pdflatex"
+                 " -output-directory /tmp"
+                 " -draftmode"
+                 " -interaction nonstopmode /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".tex"))))
    ;; Analyze the result of the async process.
-   `(lambda (result) (mt-evaluate-result result ,file)))
+   `(lambda (result) (mt-evaluate-result result ,file ,forks ,calculations)))
   ;; If there are less processes than usable cores, start a new one.
   ;; TODO: start all processes at the same time.
-  (when (and (< (- mt-start-count mt-receive-count) mt-forks)
-             (< mt-start-count mt-calculations)
+  (when (and (< (- mt-start-count mt-receive-count) forks)
+             (< mt-start-count calculations)
              (> mt-start-count 1))
-    (mt-pdflatex range file)))
+    (mt-pdflatex range file forks calculations)))
 
-(defun mt-evaluate-result (result file)
+(defun mt-evaluate-result (result file forks calculations)
   ;; Count overfull and underfull hboxes.
   (let ((underfull-boxes 0)
         (overfull-boxes 0)
         (current-count (mt-extract-file-number result)))
     ;; Make a matrix of the badness of all sections with all sizes.
     (aset mt-underfull-matrix
-          (- current-count 1) (mapc (lambda (x) (setq underfull-boxes (+ x underfull-boxes)))
-                                    (mt-sum-errors-in-sections result
-                                                               mt-section-list
-                                                               "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*lines \\([[:digit:]]+\\)")))
+          (- current-count 1)
+          (mapc (lambda (x) (setq underfull-boxes (+ x underfull-boxes)))
+                (mt-sum-errors-in-sections
+                 result
+                 mt-section-list
+                 "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)")))
     (aset mt-overfull-matrix
-          (- current-count 1) (mapc (lambda (x) (setq overfull-boxes (+ x overfull-boxes)))
-                                    (mt-sum-errors-in-sections result
-                                                               mt-section-list
-                                                               "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*lines \\([[:digit:]]+\\)")))
+          (- current-count 1)
+          (mapc (lambda (x) (setq overfull-boxes (+ x overfull-boxes)))
+                (mt-sum-errors-in-sections
+                 result
+                 mt-section-list
+                 "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)")))
     ;; Remember the best page size.
     (if (> current-count 1)
         (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
@@ -161,19 +153,20 @@ pagesize of individual sections."
                                     mt-init-underfull-boxes
                                     mt-best-underfull-boxes
                                     mt-receive-count
-                                    mt-calculations
+                                    calculations
                                     file))
     ;; If there are less processes than usable cores, start a new one.
-    (when (and (< (- mt-start-count mt-receive-count) mt-forks)
-               (< mt-start-count mt-calculations))
-      (mt-pdflatex mt-range file))
+    (when (and (< (- mt-start-count mt-receive-count) forks)
+               (< mt-start-count calculations))
+      (mt-pdflatex mt-range file forks calculations))
     ;; Finish calculations.
-    (when (>= mt-receive-count mt-calculations)
-      (mt-inject-mdframes)
+    (when (>= mt-receive-count calculations)
+      (mt-inject-mdframes calculations)
       (shell-command
-       (concat "cp /tmp/tmp.macro-type." (number-to-string mt-best-file) ".tex "
-               (car (split-string file "\.tex$")) ".macro-type.tex;"
-               "rm /tmp/tmp.macro-type.*;"
+       (concat "cp /tmp/tmp.macro-type."
+               (number-to-string mt-best-file) ".tex "
+               (car (split-string file "\.tex$")) ".macro-type.tex; "
+               "rm /tmp/tmp.macro-type.* ; "
                "pdflatex -output-directory "
                (car (split-string file "/[^/]+\.tex$"))
                " -interaction nonstopmode "
@@ -192,7 +185,7 @@ pagesize of individual sections."
                   (mt-sum-errors-in-sections
                    (buffer-string)
                    mt-section-list
-                   "^Overfull \\\\hbox (\\([[:digit:]\.]+\\)pt too wide).*lines \\([[:digit:]]+\\)"))
+                   "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)"))
             y)
           mt-init-underfull-boxes
           (let ((y 0))
@@ -200,37 +193,37 @@ pagesize of individual sections."
                   (mt-sum-errors-in-sections
                    (buffer-string)
                    mt-section-list
-                   "^Underfull \\\\hbox (badness \\([[:digit:]\.]+\\)).*lines \\([[:digit:]]+\\)"))
+                   "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)"))
             y)
           mt-receive-count
-          mt-calculations
+          calculations
           file
           t))))))
 
-(defun mt-inject-mdframes ()
+(defun mt-inject-mdframes (calculations)
   "Change pagesize for sections."
   (let ((section-count 0)
         (blur-count 0)
-        (mt-blur-vector (make-vector (- (length mt-section-list) 1)
-                                     mt-best-file))
-        (mt-used-calculation-vector
+        (blur-vector (make-vector (- (length mt-section-list) 1)
+                                  mt-best-file))
+        (used-calculation-vector
          (make-vector (- (length mt-section-list) 1) mt-best-file)))
     (while (< blur-count 3)
       (setq blur-count (+ blur-count 1)
             section-count 0
-            mt-blur-vector (mt-blur-mdframe mt-used-calculation-vector
-                                            mt-best-file)
-            mt-used-calculation-vector mt-blur-vector)
+            blur-vector (mt-blur-mdframe used-calculation-vector
+                                         mt-best-file)
+            used-calculation-vector blur-vector)
       ;; Do this for every section.
       (while (< section-count (- (length mt-section-list) 1))
-        (let ((best-file (elt mt-blur-vector section-count)))
+        (let ((best-file (elt blur-vector section-count)))
           ;; Calculate only when there is badness.
           (when (mt-is-there-badness-p mt-overfull-matrix
                                        mt-underfull-matrix
                                        best-file
                                        section-count)
             ;; Look at all alternative pagesizes.
-            (aset mt-used-calculation-vector section-count
+            (aset used-calculation-vector section-count
                   (mt-nearest-good-file-number best-file
                                                mt-underfull-matrix
                                                mt-overfull-matrix
@@ -239,20 +232,40 @@ pagesize of individual sections."
     (setq section-count 0)
     (while (< section-count (- (length mt-section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
-      (when (not (= (elt mt-used-calculation-vector section-count)
+      (when (not (= (elt used-calculation-vector section-count)
                     mt-best-file))
         ;; Inject new margin size.
         (mt-write-injection (nth section-count mt-section-list)
                             (nth (+ 1 section-count) mt-section-list)
-                            (mt-calculate-margin-change mt-range
-                                                        mt-calculations
-                                                        (elt mt-used-calculation-vector
-                                                             section-count)
-                                                        mt-best-file)
+                            (mt-calculate-margin-change
+                             mt-range
+                             calculations
+                             (elt used-calculation-vector
+                                  section-count)
+                             mt-best-file)
                             mt-best-file))
       (setq section-count (+ 1 section-count))))
   ;; Actually, they are already injected.
   (message "Injecting mdframes"))
+
+(defun mt-write-injection (this-section-line
+                           next-section-line
+                           margin-change
+                           file-number)
+  (shell-command (concat "sed -i '" (number-to-string this-section-line)
+                         " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
+                         "[hidealllines=true,"
+                         "innertopmargin=2.1pt,skipabove=0mm,"
+                         "innerleftmargin="
+                         (number-to-string margin-change) "mm,"
+                         "innerrightmargin="
+                         (number-to-string margin-change) "mm]"
+                         "/' /tmp/tmp.macro-type."
+                         (number-to-string file-number) ".tex"))
+  (shell-command (concat "sed -i '" (number-to-string next-section-line)
+                         " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
+                         "/tmp/tmp.macro-type."
+                         (number-to-string file-number) ".tex")))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (length section-list) 0)))
@@ -265,15 +278,25 @@ pagesize of individual sections."
                       (< (nth local-count section-list)
                          (string-to-number (match-string 2))))
             (setq local-count (+ local-count 1)))
-          (aset error-vector (- local-count 1) (+ (string-to-number (match-string 1))
-                                                  (elt error-vector (- local-count 1)))))))
+          (aset error-vector (- local-count 1)
+                (+ (string-to-number (match-string 1))
+                   (elt error-vector (- local-count 1)))))))
     error-vector))
+
+(defun mt-file-check (file)
+  "Return t when file ends in .tex."
+  (with-temp-buffer
+    (insert file)
+    (goto-char (point-min))
+    (re-search-forward "/$\\|\\.tex$" nil t)))
 
 (defun mt-extract-file-number (input)
   (with-temp-buffer
     (insert input)
     (goto-char (point-min))
-    (when (re-search-forward "Transcript written on /tmp/tmp\.macro-type\.\\([[:digit:]]+\\)\.log" nil t)
+    (when (re-search-forward
+           "Transcript written on /tmp/tmp\.macro-type\.\\([0-9]+\\)\.log"
+           nil t)
       (string-to-number (match-string 1)))))
 
 (defun mt-nearest-good-file-number (best-file-number
@@ -285,27 +308,35 @@ pagesize of individual sections."
         (local-file-count 0))
     (while (< local-file-count calculations)
       (when (and (<= (+ local-file-count best-file-number) calculations)
-                 (< (+ (* 100 (elt (elt overfull-matrix (+ local-file-count
-                                                           (- best-file-number 1)))
+                 (< (+ (* 100 (elt (elt overfull-matrix
+                                        (+ local-file-count
+                                           (- best-file-number 1)))
                                    current-section))
-                       (elt (elt underfull-matrix (+ local-file-count
-                                                     (- best-file-number 1)))
+                       (elt (elt underfull-matrix
+                                 (+ local-file-count
+                                    (- best-file-number 1)))
                             current-section))
-                    (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
+                    (+ (* 100 (elt (elt overfull-matrix
+                                        (- local-file-number 1))
                                    current-section))
-                       (elt (elt underfull-matrix (- local-file-number 1))
+                       (elt (elt underfull-matrix
+                                 (- local-file-number 1))
                             current-section))))
         (setq local-file-number (+ local-file-count best-file-number)))
       (when (and (> (- best-file-number local-file-count) 0)
-                 (< (+ (* 100 (elt (elt overfull-matrix (- (- best-file-number 1)
-                                                           local-file-count))
+                 (< (+ (* 100 (elt (elt overfull-matrix
+                                        (- (- best-file-number 1)
+                                           local-file-count))
                                    current-section))
-                       (elt (elt underfull-matrix (- (- best-file-number 1)
-                                                     local-file-count))
+                       (elt (elt underfull-matrix
+                                 (- (- best-file-number 1)
+                                    local-file-count))
                             current-section))
-                    (+ (* 100 (elt (elt overfull-matrix (- local-file-number 1))
+                    (+ (* 100 (elt (elt overfull-matrix
+                                        (- local-file-number 1))
                                    current-section))
-                       (elt (elt underfull-matrix (- local-file-number 1))
+                       (elt (elt underfull-matrix
+                                 (- local-file-number 1))
                             current-section))))
         (setq local-file-number (- best-file-number local-file-count)))
       (setq local-file-count (+ 1 local-file-count)))
@@ -334,25 +365,6 @@ pagesize of individual sections."
             (* (- local-file-number 2) increment))
          (+ margin-increase
             (* (- best-file-number 2) increment))))))
-
-(defun mt-write-injection (this-section-line
-                           next-section-line
-                           margin-change
-                           file-number)
-  (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                         " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
-                         "[backgroundcolor=theme,hidealllines=true,"
-                         "innertopmargin=2.1pt,skipabove=0mm,"
-                         "innerleftmargin="
-                         (number-to-string margin-change) "mm,"
-                         "innerrightmargin="
-                         (number-to-string margin-change) "mm]"
-                         "/' /tmp/tmp.macro-type."
-                         (number-to-string file-number) ".tex"))
-  (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                         " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
-                         "/tmp/tmp.macro-type."
-                         (number-to-string file-number) ".tex")))
 
 (defun mt-minibuffer-message (init-overfull best-overfull
                                             init-underfull
