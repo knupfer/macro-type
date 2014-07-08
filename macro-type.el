@@ -1,4 +1,3 @@
-;; TODO: refactor, functional
 ;;; macro-type.el --- optimize margins of tex-files
 
 ;; Copyright (C) 2014 Florian Knupfer
@@ -109,9 +108,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                  (number-to-string local-count) ".tex"
                  " > /dev/null"))))
    ;; Analyze the result of the async process.
-   `(lambda (result) (mt-evaluate-result ,mt-start-count ,file ,forks ,calculations)))
+   `(lambda (result) (mt-evaluate-result ,mt-start-count
+                                         ,file
+                                         ,forks
+                                         ,calculations)))
   ;; If there are less processes than usable cores, start a new one.
-  ;; TODO: start all processes at the same time.
   (when (and (< (- mt-start-count mt-receive-count) forks)
              (< mt-start-count calculations)
              (> mt-start-count 1))
@@ -123,7 +124,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (overfull-boxes 0)
         (result nil))
     (with-temp-buffer
-      (insert-file-contents (concat "/tmp/tmp.macro-type." (number-to-string current-count) ".log"))
+      (insert-file-contents (concat "/tmp/tmp.macro-type."
+                                    (number-to-string current-count) ".log"))
       (setq result (buffer-string)))
     ;; Make a matrix of the badness of all sections with all sizes.
     (aset mt-underfull-matrix
@@ -147,7 +149,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
             (setq mt-best-overfull-boxes overfull-boxes
                   mt-best-underfull-boxes underfull-boxes
                   mt-best-file current-count)
-          (shell-command (concat "rm /tmp/tmp.macro-type." (number-to-string current-count) ".*")))
+          (shell-command (concat "rm /tmp/tmp.macro-type."
+                                 (number-to-string current-count) ".*")))
       ;; Set initial badness.
       (setq mt-init-overfull-boxes overfull-boxes
             mt-best-overfull-boxes overfull-boxes
@@ -179,6 +182,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                " -interaction nonstopmode "
                (car (split-string file "\.tex$")) ".macro-type.tex"
                " > /dev/null"))
+      (mt-dump-log-file file)
+      (mt-plot-log-file file)
       ;; Recalculate badness after mdframe injection.
       (with-temp-buffer
         (insert-file (concat
@@ -413,6 +418,32 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                           (nth (+ count 2) local-list)) 3)))
       (setq count (+ count 1)))
     blur))
+
+(defun mt-dump-log-file (file)
+  (with-temp-buffer
+    (insert (replace-regexp-in-string
+             "(\\|)" ""
+             (format "%s" (number-sequence 1 (length (elt mt-overfull-matrix
+                                                          0))))))
+    (insert (replace-regexp-in-string
+             "\\[\\[\\|] \\[\\|]]" "\n"
+             (format "%s" mt-overfull-matrix)))
+    (write-file (concat (car (split-string file "\.tex$"))
+                        ".macro-type.plot.log"))))
+
+(defun mt-plot-log-file (file)
+  (shell-command
+   (concat "R -e 'data = read.csv(\""
+           (car (split-string file "\.tex$")) ".macro-type.plot.log"
+           "\", sep=\" \") ;"
+           "matrix = data.matrix(data);"
+           "clr = colorRampPalette("
+           "c(\"#000033\", \"#AA0000\",\"#BBBB00\",\"#FFFFBB\"))(256);"
+           "pdf(\"" (car (split-string file "\.tex$"))
+           ".macro-type.plot.pdf" "\") ;"
+           "heatmap(matrix, xlab=\"\", ylab=\"\",labCol=\"\", labRow=\"\","
+           "Colv=NA, Rowv=NA, col = clr, scale=\"none\", margins=c(0.5,0.5));"
+           "dev.off()' > /dev/null")))
 
 (provide 'macro-type)
 
