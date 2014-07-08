@@ -91,15 +91,15 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                     "\\addtolength"
                     "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
                  "\n\\begin{document} \" > "
-                 (concat "/tmp/tmp.macro-type.header."
-                         (number-to-string local-count) ".tex")))
+                 (concat "/tmp/tmp.macro-type."
+                         (number-to-string local-count) ".header.tex")))
         ;; Concatenate parts of the file, compile it and return log as string.
         ;; Doing this in emacs buffers is very slow.
         (shell-command
          (concat "cat"
                  " /tmp/tmp.macro-type.begin"
-                 " /tmp/tmp.macro-type.header."
-                 (number-to-string local-count) ".tex"
+                 " /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".header.tex"
                  " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
                  (number-to-string local-count) ".tex;"
                  "pdflatex"
@@ -142,11 +142,12 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                  "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)")))
     ;; Remember the best page size.
     (if (> current-count 1)
-        (when (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
-                 (+ (* 100 overfull-boxes) underfull-boxes))
-          (setq mt-best-overfull-boxes overfull-boxes
-                mt-best-underfull-boxes underfull-boxes
-                mt-best-file current-count))
+        (if (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
+               (+ (* 100 overfull-boxes) underfull-boxes))
+            (setq mt-best-overfull-boxes overfull-boxes
+                  mt-best-underfull-boxes underfull-boxes
+                  mt-best-file current-count)
+          (shell-command (concat "rm /tmp/tmp.macro-type." (number-to-string current-count) ".*")))
       ;; Set initial badness.
       (setq mt-init-overfull-boxes overfull-boxes
             mt-best-overfull-boxes overfull-boxes
