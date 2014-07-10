@@ -40,13 +40,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           mt-range range
           mt-best-file 1
           ;; Get line numbers of sections, including begin and end document.
-          mt-section-list
-          (map 'list 'string-to-number
-               (split-string
-                (shell-command-to-string
-                 (concat
-                  "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
-                  file " | grep -o ^[0-9]*"))))
           mt-underfull-matrix (make-vector calculations 0)
           mt-overfull-matrix (make-vector calculations 0))
     ;; Save the header and the body of the tex file to access them faster
@@ -63,12 +56,20 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (car
             (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
           (write-file "/tmp/tmp.macro-type.end"))))
-    (let ((local-count 1))
-      (while (<= local-count forks)
-        (mt-pdflatex-IO range file forks calculations local-count)
+    (let ((local-count 1)
+          (section-list
+           (map 'list 'string-to-number
+                (split-string
+                 (shell-command-to-string
+                  (concat
+                   "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
+                   file " | grep -o ^[0-9]*"))))))
+      (while (and (<= local-count forks)
+                  (<= local-count calculations))
+        (mt-pdflatex-IO range file forks calculations local-count section-list)
         (setq local-count (+ 1 local-count))))))
 
-(defun mt-evaluate-result-IO (current-count file forks calculations)
+(defun mt-evaluate-result-IO (current-count file forks calculations section-list)
   ;; Count overfull and underfull hboxes.
   (let ((underfull-boxes 0)
         (overfull-boxes 0)
@@ -83,14 +84,14 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           (mapc (lambda (x) (setq underfull-boxes (+ x underfull-boxes)))
                 (mt-sum-errors-in-sections
                  result
-                 mt-section-list
+                 section-list
                  "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)")))
     (aset mt-overfull-matrix
           (- current-count 1)
           (mapc (lambda (x) (setq overfull-boxes (+ x overfull-boxes)))
                 (mt-sum-errors-in-sections
                  result
-                 mt-section-list
+                 section-list
                  "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)")))
     ;; Remember the best page size.
     (if (> current-count 1)
@@ -118,22 +119,22 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                       file)))
     ;; Finish calculations.
     (when (>= mt-receive-count calculations)
-      (mt-final-calculation-IO calculations file))))
+      (mt-final-calculation-IO calculations file section-list))))
 
-(defun mt-final-calculation-IO (calculations file)
+(defun mt-final-calculation-IO (calculations file section-list)
   (let ((section-count 0)
         (local-vector (mt-inject-mdframes calculations
-                                          mt-section-list
+                                          section-list
                                           mt-best-file
                                           mt-overfull-matrix
                                           mt-underfull-matrix)))
-    (while (< section-count (- (length mt-section-list) 1))
+    (while (< section-count (- (length section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
       (when (not (= (elt local-vector section-count)
                     mt-best-file))
         ;; Inject new margin size.
-        (mt-write-injection-IO (nth section-count mt-section-list)
-                               (nth (+ 1 section-count) mt-section-list)
+        (mt-write-injection-IO (nth section-count section-list)
+                               (nth (+ 1 section-count) section-list)
                                (mt-calculate-margin-change
                                 mt-range
                                 calculations
@@ -168,7 +169,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (mapc (lambda (x) (setq y (+ x y)))
               (mt-sum-errors-in-sections
                (buffer-string)
-               mt-section-list
+               section-list
                "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)"))
         y)
       mt-init-underfull-boxes
@@ -176,7 +177,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (mapc (lambda (x) (setq y (+ x y)))
               (mt-sum-errors-in-sections
                (buffer-string)
-               mt-section-list
+               section-list
                "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)"))
         y)
       mt-receive-count
@@ -248,7 +249,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                            "/tmp/tmp.macro-type."
                            (number-to-string file-number) ".tex"))))
 
-(defun mt-pdflatex-IO (range file forks calculations local-count)
+(defun mt-pdflatex-IO (range file forks calculations local-count section-list)
   "Starts multiple emacsen to work asynchronosly."
   (async-start
    `(lambda ()
@@ -292,9 +293,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
    `(lambda (result) (mt-evaluate-result-IO ,local-count
                                             ,file
                                             ,forks
-                                            ,calculations)
+                                            ,calculations
+                                            ',section-list)
       (when (<= (+ ,local-count ,forks) ,calculations)
-        (mt-pdflatex-IO ,range ,file ,forks ,calculations (+ ,local-count ,forks))))))
+        (mt-pdflatex-IO ,range ,file ,forks ,calculations (+ ,local-count ,forks) ',section-list)))))
 
 (defun mt-inject-mdframes (calculations
                            section-list
