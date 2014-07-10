@@ -422,27 +422,38 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 (defun mt-dump-log-file (file)
   (with-temp-buffer
     (insert (replace-regexp-in-string
-             "(\\|)" ""
-             (format "%s" (number-sequence 1 (length (elt mt-overfull-matrix
-                                                          0))))))
-    (insert (replace-regexp-in-string
-             "\\[\\[\\|] \\[\\|]]" "\n"
+             "\\[\\|]" ""
              (format "%s" mt-overfull-matrix)))
+    (newline)
+    (insert (replace-regexp-in-string
+             "\\[\\|]" ""
+             (format "%s" mt-underfull-matrix)))
+    (newline)
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
 (defun mt-plot-log-file (file)
   (shell-command
-   (concat "R -e 'data = read.csv(\""
+   (concat "R -e 'data = read.table(\""
            (car (split-string file "\.tex$")) ".macro-type.plot.log"
-           "\", sep=\" \") ;"
-           "matrix = data.matrix(data);"
-           "clr = colorRampPalette("
-           "c(\"#000033\", \"#AA0000\",\"#BBBB00\",\"#FFFFBB\"))(256);"
+           "\", sep=\" \", colClasses=\"numeric\", dec=\".\") ;"
+           "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
+           "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
+           "library(ggplot2);"
+           "library(grid);"
+           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
+           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
+           "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),0.9*(1 - sqrt(0.8*under+0.2*over)),0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
+           "(x=1:" (number-to-string (length (elt mt-overfull-matrix 0)))
+           ", y=1:" (number-to-string (length mt-overfull-matrix)) "));"
            "pdf(\"" (car (split-string file "\.tex$"))
            ".macro-type.plot.pdf" "\") ;"
-           "heatmap(matrix, xlab=\"\", ylab=\"\",labCol=\"\", labRow=\"\","
-           "Colv=NA, Rowv=NA, col = clr, scale=\"none\", margins=c(0.5,0.5));"
+           "ggplot(df, aes(x=x, y=y))"
+           " + theme_bw()"
+           " + theme(rect=element_blank(),line = element_blank(), text=element_blank())"
+           " + theme(axis.ticks.margin = unit(0, \"cm\"),plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), \"cm\"))"
+           " + geom_tile(aes(fill=col))"
+           " + scale_fill_identity();"
            "dev.off()' > /dev/null")))
 
 (provide 'macro-type)
