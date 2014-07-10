@@ -122,7 +122,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 
 (defun mt-final-calculation-IO (calculations file)
   (let ((section-count 0)
-        (local-vector (mt-inject-mdframes calculations)))
+        (local-vector (mt-inject-mdframes calculations
+                                          mt-section-list
+                                          mt-best-file
+                                          mt-overfull-matrix
+                                          mt-underfull-matrix)))
     (while (< section-count (- (length mt-section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
       (when (not (= (elt local-vector section-count)
@@ -202,17 +206,23 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
            "library(ggplot2);"
            "library(grid);"
-           ;; "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
-           ;; "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
-           "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),0.9*(1 - sqrt(0.8*under+0.2*over)),0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
+           ;; "df = data.frame(col=rgb(0.9*(1 - over),
+           ;; 0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
+           ;; "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),
+           ;; 0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
+           "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),"
+           "0.9*(1 - sqrt(0.8*under+0.2*over)),"
+           "0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
            "(x=1:" (number-to-string sections)
            ", y=1:" (number-to-string calculations) "));"
            "pdf('" (car (split-string file "\.tex$"))
            ".macro-type.plot.pdf" "') ;"
            "ggplot(df, aes(x=x, y=y))"
            " + theme_bw()"
-           " + theme(rect=element_blank(),line = element_blank(), text=element_blank())"
-           " + theme(axis.ticks.margin = unit(0, 'cm'),plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), 'cm'))"
+           " + theme(rect=element_blank(),"
+           "line = element_blank(), text=element_blank())"
+           " + theme(axis.ticks.margin = unit(0, 'cm'),"
+           "plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), 'cm'))"
            " + geom_tile(aes(fill=col))"
            " + scale_fill_identity();"
            "dev.off()\" > /dev/null")))
@@ -286,45 +296,49 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       (when (<= (+ ,local-count ,forks) ,calculations)
         (mt-pdflatex-IO ,range ,file ,forks ,calculations (+ ,local-count ,forks))))))
 
-(defun mt-inject-mdframes (calculations)
+(defun mt-inject-mdframes (calculations
+                           section-list
+                           best-file
+                           overfull-matrix
+                           underfull-matrix)
   "Change pagesize for sections."
   (let ((section-count 0)
         (blur-count 0)
-        (blur-vector (make-vector (- (length mt-section-list) 1)
-                                  mt-best-file))
+        (blur-vector (make-vector (- (length section-list) 1)
+                                  best-file))
         (used-calculation-vector
-         (make-vector (- (length mt-section-list) 1) mt-best-file)))
+         (make-vector (- (length section-list) 1) best-file)))
     (while (< blur-count 3)
       (setq blur-count (+ blur-count 1)
             section-count 0
             blur-vector (mt-blur-mdframe used-calculation-vector
-                                         mt-best-file)
+                                         best-file)
             used-calculation-vector blur-vector)
       ;; Do this for every section.
-      (while (< section-count (- (length mt-section-list) 1))
-        (let ((best-file (elt blur-vector section-count)))
+      (while (< section-count (- (length section-list) 1))
+        (let ((local-best-file (elt blur-vector section-count)))
           ;; Calculate only when there is badness.
-          (when (mt-is-there-badness-p mt-overfull-matrix
-                                       mt-underfull-matrix
-                                       best-file
+          (when (mt-is-there-badness-p overfull-matrix
+                                       underfull-matrix
+                                       local-best-file
                                        section-count)
             ;; Look at all alternative pagesizes.
             (aset used-calculation-vector section-count
-                  (mt-nearest-good-file-number best-file
-                                               mt-underfull-matrix
-                                               mt-overfull-matrix
+                  (mt-nearest-good-file-number local-best-file
+                                               underfull-matrix
+                                               overfull-matrix
                                                section-count))))
         (setq section-count (+ 1 section-count))))
     used-calculation-vector))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
-  (let ((error-vector (make-vector (length section-list) 0)))
+  (let ((error-vector (make-vector (- (length section-list) 1) 0)))
     (with-temp-buffer
       (insert input)
       (goto-char (point-min))
       (while (re-search-forward error-search-string nil t)
         (let ((local-count 0))
-          (while (and (< local-count (length section-list))
+          (while (and (< local-count (- (length section-list) 1))
                       (<= (nth local-count section-list)
                           (string-to-number (match-string 2))))
             (setq local-count (+ local-count 1)))
