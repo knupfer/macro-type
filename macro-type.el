@@ -64,9 +64,9 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (car
             (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
           (write-file "/tmp/tmp.macro-type.end"))))
-    (mt-pdflatex range file forks calculations)))
+    (mt-pdflatex-IO range file forks calculations)))
 
-(defun mt-pdflatex (range file forks calculations)
+(defun mt-pdflatex-IO (range file forks calculations)
   "Starts multiple emacsen to work asynchronosly."
   (setq mt-start-count (+ mt-start-count 1))
   (async-start
@@ -108,7 +108,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                  (number-to-string local-count) ".tex"
                  " > /dev/null"))))
    ;; Analyze the result of the async process.
-   `(lambda (result) (mt-evaluate-result ,mt-start-count
+   `(lambda (result) (mt-evaluate-result-IO ,mt-start-count
                                          ,file
                                          ,forks
                                          ,calculations)))
@@ -116,9 +116,9 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
   (when (and (< (- mt-start-count mt-receive-count) forks)
              (< mt-start-count calculations)
              (> mt-start-count 1))
-    (mt-pdflatex range file forks calculations)))
+    (mt-pdflatex-IO range file forks calculations)))
 
-(defun mt-evaluate-result (current-count file forks calculations)
+(defun mt-evaluate-result-IO (current-count file forks calculations)
   ;; Count overfull and underfull hboxes.
   (let ((underfull-boxes 0)
         (overfull-boxes 0)
@@ -168,7 +168,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     ;; If there are less processes than usable cores, start a new one.
     (when (and (< (- mt-start-count mt-receive-count) forks)
                (< mt-start-count calculations))
-      (mt-pdflatex mt-range file forks calculations))
+      (mt-pdflatex-IO mt-range file forks calculations))
     ;; Finish calculations.
     (when (>= mt-receive-count calculations)
       (mt-inject-mdframes calculations)
@@ -182,8 +182,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                " -interaction nonstopmode "
                (car (split-string file "\.tex$")) ".macro-type.tex"
                " > /dev/null"))
-      (mt-dump-log-file file)
-      (mt-plot-log-file file)
+      (mt-dump-log-file-IO file)
+      (mt-plot-log-file-IO file)
       ;; Recalculate badness after mdframe injection.
       (with-temp-buffer
         (insert-file (concat
@@ -211,6 +211,63 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           calculations
           file
           t))))))
+(defun mt-dump-log-file-IO (file)
+  (with-temp-buffer
+    (insert (replace-regexp-in-string
+             "\\[\\|]" ""
+             (format "%s" mt-overfull-matrix)))
+    (newline)
+    (insert (replace-regexp-in-string
+             "\\[\\|]" ""
+             (format "%s" mt-underfull-matrix)))
+    (newline)
+    (write-file (concat (car (split-string file "\.tex$"))
+                        ".macro-type.plot.log"))))
+
+(defun mt-plot-log-file-IO (file)
+  (shell-command
+   (concat "R -e 'data = read.table(\""
+           (car (split-string file "\.tex$")) ".macro-type.plot.log"
+           "\", sep=\" \", colClasses=\"numeric\", dec=\".\") ;"
+           "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
+           "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
+           "library(ggplot2);"
+           "library(grid);"
+           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
+           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
+           "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),0.9*(1 - sqrt(0.8*under+0.2*over)),0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
+           "(x=1:" (number-to-string (length (elt mt-overfull-matrix 0)))
+           ", y=1:" (number-to-string (length mt-overfull-matrix)) "));"
+           "pdf(\"" (car (split-string file "\.tex$"))
+           ".macro-type.plot.pdf" "\") ;"
+           "ggplot(df, aes(x=x, y=y))"
+           " + theme_bw()"
+           " + theme(rect=element_blank(),line = element_blank(), text=element_blank())"
+           " + theme(axis.ticks.margin = unit(0, \"cm\"),plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), \"cm\"))"
+           " + geom_tile(aes(fill=col))"
+           " + scale_fill_identity();"
+           "dev.off()' > /dev/null")))
+
+(defun mt-write-injection-IO (this-section-line
+                              next-section-line
+                              margin-change
+                              file-number)
+  (when (or (>= margin-change 0.0001)
+            (<= margin-change -0.0001))
+    (shell-command (concat "sed -i '" (number-to-string this-section-line)
+                           " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
+                           "[hidealllines=true,"
+                           "innertopmargin=2.1pt,skipabove=0mm,"
+                           "innerleftmargin="
+                           (number-to-string margin-change) "mm,"
+                           "innerrightmargin="
+                           (number-to-string margin-change) "mm]"
+                           "/' /tmp/tmp.macro-type."
+                           (number-to-string file-number) ".tex"))
+    (shell-command (concat "sed -i '" (number-to-string next-section-line)
+                           " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
+                           "/tmp/tmp.macro-type."
+                           (number-to-string file-number) ".tex"))))
 
 (defun mt-inject-mdframes (calculations)
   "Change pagesize for sections."
@@ -247,39 +304,19 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       (when (not (= (elt used-calculation-vector section-count)
                     mt-best-file))
         ;; Inject new margin size.
-        (mt-write-injection (nth section-count mt-section-list)
-                            (nth (+ 1 section-count) mt-section-list)
-                            (mt-calculate-margin-change
-                             mt-range
-                             calculations
-                             (elt used-calculation-vector
-                                  section-count)
-                             mt-best-file)
-                            mt-best-file))
+        (mt-write-injection-IO (nth section-count mt-section-list)
+                               (nth (+ 1 section-count) mt-section-list)
+                               (mt-calculate-margin-change
+                                mt-range
+                                calculations
+                                (elt used-calculation-vector
+                                     section-count)
+                                mt-best-file)
+                               mt-best-file))
       (setq section-count (+ 1 section-count))))
   ;; Actually, they are already injected.
   (message "Injecting mdframes"))
 
-(defun mt-write-injection (this-section-line
-                           next-section-line
-                           margin-change
-                           file-number)
-  (when (or (>= margin-change 0.0001)
-            (<= margin-change -0.0001))
-    (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                           " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
-                           "[hidealllines=true,"
-                           "innertopmargin=2.1pt,skipabove=0mm,"
-                           "innerleftmargin="
-                           (number-to-string margin-change) "mm,"
-                           "innerrightmargin="
-                           (number-to-string margin-change) "mm]"
-                           "/' /tmp/tmp.macro-type."
-                           (number-to-string file-number) ".tex"))
-    (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                           " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
-                           "/tmp/tmp.macro-type."
-                           (number-to-string file-number) ".tex"))))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (length section-list) 0)))
@@ -418,43 +455,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                           (nth (+ count 2) local-list)) 3)))
       (setq count (+ count 1)))
     blur))
-
-(defun mt-dump-log-file (file)
-  (with-temp-buffer
-    (insert (replace-regexp-in-string
-             "\\[\\|]" ""
-             (format "%s" mt-overfull-matrix)))
-    (newline)
-    (insert (replace-regexp-in-string
-             "\\[\\|]" ""
-             (format "%s" mt-underfull-matrix)))
-    (newline)
-    (write-file (concat (car (split-string file "\.tex$"))
-                        ".macro-type.plot.log"))))
-
-(defun mt-plot-log-file (file)
-  (shell-command
-   (concat "R -e 'data = read.table(\""
-           (car (split-string file "\.tex$")) ".macro-type.plot.log"
-           "\", sep=\" \", colClasses=\"numeric\", dec=\".\") ;"
-           "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
-           "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
-           "library(ggplot2);"
-           "library(grid);"
-           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
-           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
-           "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),0.9*(1 - sqrt(0.8*under+0.2*over)),0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
-           "(x=1:" (number-to-string (length (elt mt-overfull-matrix 0)))
-           ", y=1:" (number-to-string (length mt-overfull-matrix)) "));"
-           "pdf(\"" (car (split-string file "\.tex$"))
-           ".macro-type.plot.pdf" "\") ;"
-           "ggplot(df, aes(x=x, y=y))"
-           " + theme_bw()"
-           " + theme(rect=element_blank(),line = element_blank(), text=element_blank())"
-           " + theme(axis.ticks.margin = unit(0, \"cm\"),plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), \"cm\"))"
-           " + geom_tile(aes(fill=col))"
-           " + scale_fill_identity();"
-           "dev.off()' > /dev/null")))
 
 (provide 'macro-type)
 
