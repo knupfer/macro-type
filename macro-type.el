@@ -39,15 +39,13 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (setq mt-receive-count 0
           mt-range range
           mt-best-file 1
-          mt-init-overfull-boxes 999
-          mt-init-underfull-boxes 999
           ;; Get line numbers of sections, including begin and end document.
           mt-section-list
           (map 'list 'string-to-number
                (split-string
                 (shell-command-to-string
                  (concat
-                  "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
+                  "grep -n 'section{.*}\\|begin{document}' "
                   file " | grep -o ^[0-9]*"))))
           mt-underfull-matrix (make-vector calculations 0)
           mt-overfull-matrix (make-vector calculations 0))
@@ -110,13 +108,14 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
             mt-best-underfull-boxes underfull-boxes))
     (setq mt-receive-count (+ mt-receive-count 1))
     ;; Show the current state.
-    (message (mt-minibuffer-message mt-init-overfull-boxes
-                                    mt-best-overfull-boxes
-                                    mt-init-underfull-boxes
-                                    mt-best-underfull-boxes
-                                    mt-receive-count
-                                    calculations
-                                    file))
+    (when (boundp 'mt-init-overfull-boxes)
+      (message (mt-minibuffer-message mt-init-overfull-boxes
+                                      mt-best-overfull-boxes
+                                      mt-init-underfull-boxes
+                                      mt-best-underfull-boxes
+                                      mt-receive-count
+                                      calculations
+                                      file)))
     ;; Finish calculations.
     (when (>= mt-receive-count calculations)
       (mt-final-calculation-IO calculations file))))
@@ -163,13 +162,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       mt-receive-count
       calculations
       file
-      t)))
-
-
-
-
-
-  )
+      t))))
 
 (defun mt-dump-log-file-IO (file)
   (with-temp-buffer
