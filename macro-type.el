@@ -37,9 +37,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
   (if (car (file-attributes file 0))
       (error "You can't choose a directory")
     (setq mt-receive-count 0
-          mt-start-count 0
           mt-range range
           mt-best-file 1
+          mt-init-overfull-boxes 999
+          mt-init-underfull-boxes 999
           ;; Get line numbers of sections, including begin and end document.
           mt-section-list
           (map 'list 'string-to-number
@@ -64,59 +65,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (car
             (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
           (write-file "/tmp/tmp.macro-type.end"))))
-    (mt-pdflatex-IO range file forks calculations)))
-
-(defun mt-pdflatex-IO (range file forks calculations)
-  "Starts multiple emacsen to work asynchronosly."
-  (setq mt-start-count (+ mt-start-count 1))
-  (async-start
-   `(lambda ()
-      ;; Inject variables into new emacsen.
-      (let* ((local-count ,mt-start-count)
-             (size (+ (* -0.5 ,range)
-                      (* (- local-count 2)
-                         (/ ,range 1.0 (max 1 (- ,calculations 2)))))))
-        ;; Save different page sizes, using echo is for speed
-        (shell-command
-         (concat "echo \"\\usepackage{mdframed}"
-                 (when (and (> local-count 1)
-                            (or (>= size 0.0001)
-                                (<= size -0.0001)))
-                   (concat
-                    "\\addtolength"
-                    "{\\oddsidemargin}{" (number-to-string size) "mm}"
-                    "\\addtolength"
-                    "{\\evensidemargin}{" (number-to-string size) "mm}"
-                    "\\addtolength"
-                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
-                 "\n\\begin{document} \" > "
-                 (concat "/tmp/tmp.macro-type."
-                         (number-to-string local-count) ".header.tex")))
-        ;; Concatenate parts of the file, compile it and return log as string.
-        ;; Doing this in emacs buffers is very slow.
-        (shell-command
-         (concat "cat"
-                 " /tmp/tmp.macro-type.begin"
-                 " /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".header.tex"
-                 " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex;"
-                 "pdflatex"
-                 " -output-directory /tmp"
-                 " -draftmode"
-                 " -interaction nonstopmode /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex"
-                 " > /dev/null"))))
-   ;; Analyze the result of the async process.
-   `(lambda (result) (mt-evaluate-result-IO ,mt-start-count
-                                         ,file
-                                         ,forks
-                                         ,calculations)))
-  ;; If there are less processes than usable cores, start a new one.
-  (when (and (< (- mt-start-count mt-receive-count) forks)
-             (< mt-start-count calculations)
-             (> mt-start-count 1))
-    (mt-pdflatex-IO range file forks calculations)))
+    (let ((local-count 1))
+      (while (<= local-count forks)
+        (mt-pdflatex-IO range file forks calculations local-count)
+        (setq local-count (+ 1 local-count))))))
 
 (defun mt-evaluate-result-IO (current-count file forks calculations)
   ;; Count overfull and underfull hboxes.
@@ -165,52 +117,60 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                     mt-receive-count
                                     calculations
                                     file))
-    ;; If there are less processes than usable cores, start a new one.
-    (when (and (< (- mt-start-count mt-receive-count) forks)
-               (< mt-start-count calculations))
-      (mt-pdflatex-IO mt-range file forks calculations))
     ;; Finish calculations.
     (when (>= mt-receive-count calculations)
-      (mt-inject-mdframes calculations)
-      (shell-command
-       (concat "cp /tmp/tmp.macro-type."
-               (number-to-string mt-best-file) ".tex "
-               (car (split-string file "\.tex$")) ".macro-type.tex; "
-               "rm /tmp/tmp.macro-type.* ; "
-               "pdflatex -output-directory "
-               (car (split-string file "/[^/]+\.tex$"))
-               " -interaction nonstopmode "
-               (car (split-string file "\.tex$")) ".macro-type.tex"
-               " > /dev/null"))
-      (mt-dump-log-file-IO file)
-      (mt-plot-log-file-IO file)
-      ;; Recalculate badness after mdframe injection.
-      (with-temp-buffer
-        (insert-file (concat
-                      (car (split-string file "\.tex$"))
-                      ".macro-type.log"))
-        (message
-         (mt-minibuffer-message
-          mt-init-overfull-boxes
-          (let ((y 0))
-            (mapc (lambda (x) (setq y (+ x y)))
-                  (mt-sum-errors-in-sections
-                   (buffer-string)
-                   mt-section-list
-                   "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)"))
-            y)
-          mt-init-underfull-boxes
-          (let ((y 0))
-            (mapc (lambda (x) (setq y (+ x y)))
-                  (mt-sum-errors-in-sections
-                   (buffer-string)
-                   mt-section-list
-                   "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)"))
-            y)
-          mt-receive-count
-          calculations
-          file
-          t))))))
+      (mt-final-calculation-IO calculations file))))
+
+(defun mt-final-calculation-IO (calculations file)
+  (mt-inject-mdframes calculations)
+  (shell-command
+   (concat "cp /tmp/tmp.macro-type."
+           (number-to-string mt-best-file) ".tex "
+           (car (split-string file "\.tex$")) ".macro-type.tex; "
+           "rm /tmp/tmp.macro-type.* ; "
+           "pdflatex -output-directory "
+           (car (split-string file "/[^/]+\.tex$"))
+           " -interaction nonstopmode "
+           (car (split-string file "\.tex$")) ".macro-type.tex"
+           " > /dev/null"))
+  (mt-dump-log-file-IO file)
+  (mt-plot-log-file-IO file
+                       (length (elt mt-overfull-matrix 0))
+                       (length mt-overfull-matrix))
+  ;; Recalculate badness after mdframe injection.
+  (with-temp-buffer
+    (insert-file (concat
+                  (car (split-string file "\.tex$"))
+                  ".macro-type.log"))
+    (message
+     (mt-minibuffer-message
+      mt-init-overfull-boxes
+      (let ((y 0))
+        (mapc (lambda (x) (setq y (+ x y)))
+              (mt-sum-errors-in-sections
+               (buffer-string)
+               mt-section-list
+               "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)"))
+        y)
+      mt-init-underfull-boxes
+      (let ((y 0))
+        (mapc (lambda (x) (setq y (+ x y)))
+              (mt-sum-errors-in-sections
+               (buffer-string)
+               mt-section-list
+               "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)"))
+        y)
+      mt-receive-count
+      calculations
+      file
+      t)))
+
+
+
+
+
+  )
+
 (defun mt-dump-log-file-IO (file)
   (with-temp-buffer
     (insert (replace-regexp-in-string
@@ -224,29 +184,29 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
-(defun mt-plot-log-file-IO (file)
+(defun mt-plot-log-file-IO (file sections calculations)
   (shell-command
-   (concat "R -e 'data = read.table(\""
+   (concat "R -e \"data = read.table('"
            (car (split-string file "\.tex$")) ".macro-type.plot.log"
-           "\", sep=\" \", colClasses=\"numeric\", dec=\".\") ;"
+           "', sep=' ', colClasses='numeric', dec='.') ;"
            "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
            "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
            "library(ggplot2);"
            "library(grid);"
-           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
-           ;;           "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
+           ;; "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
+           ;; "df = data.frame(col=rgb(0.9*(1 - over),0.9*(1 - under),0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
            "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),0.9*(1 - sqrt(0.8*under+0.2*over)),0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
-           "(x=1:" (number-to-string (length (elt mt-overfull-matrix 0)))
-           ", y=1:" (number-to-string (length mt-overfull-matrix)) "));"
-           "pdf(\"" (car (split-string file "\.tex$"))
-           ".macro-type.plot.pdf" "\") ;"
+           "(x=1:" (number-to-string sections)
+           ", y=1:" (number-to-string calculations) "));"
+           "pdf('" (car (split-string file "\.tex$"))
+           ".macro-type.plot.pdf" "') ;"
            "ggplot(df, aes(x=x, y=y))"
            " + theme_bw()"
            " + theme(rect=element_blank(),line = element_blank(), text=element_blank())"
-           " + theme(axis.ticks.margin = unit(0, \"cm\"),plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), \"cm\"))"
+           " + theme(axis.ticks.margin = unit(0, 'cm'),plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), 'cm'))"
            " + geom_tile(aes(fill=col))"
            " + scale_fill_identity();"
-           "dev.off()' > /dev/null")))
+           "dev.off()\" > /dev/null")))
 
 (defun mt-write-injection-IO (this-section-line
                               next-section-line
@@ -268,6 +228,54 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                            " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
                            "/tmp/tmp.macro-type."
                            (number-to-string file-number) ".tex"))))
+
+(defun mt-pdflatex-IO (range file forks calculations local-count)
+  "Starts multiple emacsen to work asynchronosly."
+  (async-start
+   `(lambda ()
+      ;; Inject variables into new emacsen.
+      (let* ((local-count ,local-count)
+             (size (+ (* -0.5 ,range)
+                      (* (- local-count 2)
+                         (/ ,range 1.0 (max 1 (- ,calculations 2)))))))
+        ;; Save different page sizes, using echo is for speed
+        (shell-command
+         (concat "echo \"\\usepackage{mdframed}"
+                 (when (and (> local-count 1)
+                            (or (>= size 0.0001)
+                                (<= size -0.0001)))
+                   (concat
+                    "\\addtolength"
+                    "{\\oddsidemargin}{" (number-to-string size) "mm}"
+                    "\\addtolength"
+                    "{\\evensidemargin}{" (number-to-string size) "mm}"
+                    "\\addtolength"
+                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
+                 "\n\\begin{document} \" > "
+                 (concat "/tmp/tmp.macro-type."
+                         (number-to-string local-count) ".header.tex")))
+        ;; Concatenate parts of the file, compile it and return log as string.
+        ;; Doing this in emacs buffers is very slow.
+        (shell-command
+         (concat "cat"
+                 " /tmp/tmp.macro-type.begin"
+                 " /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".header.tex"
+                 " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".tex;"
+                 "pdflatex"
+                 " -output-directory /tmp"
+                 " -draftmode"
+                 " -interaction nonstopmode /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".tex"
+                 " > /dev/null"))))
+   ;; Analyze the result of the async process.
+   `(lambda (result) (mt-evaluate-result-IO ,local-count
+                                            ,file
+                                            ,forks
+                                            ,calculations)
+      (when (<= (+ ,local-count ,forks) ,calculations)
+        (mt-pdflatex-IO ,range ,file ,forks ,calculations (+ ,local-count ,forks))))))
 
 (defun mt-inject-mdframes (calculations)
   "Change pagesize for sections."
