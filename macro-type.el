@@ -45,7 +45,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                (split-string
                 (shell-command-to-string
                  (concat
-                  "grep -n 'section{.*}\\|begin{document}' "
+                  "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
                   file " | grep -o ^[0-9]*"))))
           mt-underfull-matrix (make-vector calculations 0)
           mt-overfull-matrix (make-vector calculations 0))
@@ -121,7 +121,23 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       (mt-final-calculation-IO calculations file))))
 
 (defun mt-final-calculation-IO (calculations file)
-  (mt-inject-mdframes calculations)
+  (let ((section-count 0)
+        (local-vector (mt-inject-mdframes calculations)))
+    (while (< section-count (- (length mt-section-list) 1))
+      ;; Calculate change of the margins, considering already changed size.
+      (when (not (= (elt local-vector section-count)
+                    mt-best-file))
+        ;; Inject new margin size.
+        (mt-write-injection-IO (nth section-count mt-section-list)
+                               (nth (+ 1 section-count) mt-section-list)
+                               (mt-calculate-margin-change
+                                mt-range
+                                calculations
+                                (elt local-vector
+                                     section-count)
+                                mt-best-file)
+                               mt-best-file))
+      (setq section-count (+ 1 section-count))))
   (shell-command
    (concat "cp /tmp/tmp.macro-type."
            (number-to-string mt-best-file) ".tex "
@@ -299,25 +315,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                                mt-overfull-matrix
                                                section-count))))
         (setq section-count (+ 1 section-count))))
-    (setq section-count 0)
-    (while (< section-count (- (length mt-section-list) 1))
-      ;; Calculate change of the margins, considering already changed size.
-      (when (not (= (elt used-calculation-vector section-count)
-                    mt-best-file))
-        ;; Inject new margin size.
-        (mt-write-injection-IO (nth section-count mt-section-list)
-                               (nth (+ 1 section-count) mt-section-list)
-                               (mt-calculate-margin-change
-                                mt-range
-                                calculations
-                                (elt used-calculation-vector
-                                     section-count)
-                                mt-best-file)
-                               mt-best-file))
-      (setq section-count (+ 1 section-count))))
-  ;; Actually, they are already injected.
-  (message "Injecting mdframes"))
-
+    used-calculation-vector))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (length section-list) 0)))
