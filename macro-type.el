@@ -43,83 +43,99 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           mt-underfull-matrix (make-vector calcs 0)
           mt-overfull-matrix (make-vector calcs 0))
     ;; Save the header and the body of the tex file to access them faster
-    (with-temp-buffer
-      (insert-file-contents file)
-      (let ((this-buffer (buffer-string)))
-        (with-temp-buffer
-          (insert
-           (car
-            (split-string this-buffer "\n.*\\\\begin{document}.*\n")))
-          (write-file "/tmp/tmp.macro-type.begin"))
-        (with-temp-buffer
-          (insert
-           (car
-            (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
-          (write-file "/tmp/tmp.macro-type.end"))))
     (let ((local-count 1)
-          (section-list
-           (map 'list 'string-to-number
-                (split-string
-                 (shell-command-to-string
-                  (concat
-                   "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
-                   file " | grep -o ^[0-9]*"))))))
+          (section-list (mt-retrieve-file-info-IO file)))
       (while (and (<= local-count forks)
                   (<= local-count calcs))
         (mt-pdflatex-IO range file forks calcs local-count section-list)
         (setq local-count (+ 1 local-count))))))
 
-(defun mt-evaluate-result-IO (current-count file forks calcs section-list)
-  ;; Count overfull and underfull hboxes.
-  (let ((underfull-boxes 0)
-        (overfull-boxes 0)
-        (result nil))
-    (with-temp-buffer
-      (insert-file-contents (concat "/tmp/tmp.macro-type."
-                                    (number-to-string current-count) ".log"))
-      (setq result (buffer-string)))
-    ;; Make a matrix of the badness of all sections with all sizes.
-    (aset mt-underfull-matrix
-          (- current-count 1)
-          (mapc (lambda (x) (setq underfull-boxes (+ x underfull-boxes)))
-                (mt-sum-errors-in-sections
-                 result
-                 section-list
-                 "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)")))
-    (aset mt-overfull-matrix
-          (- current-count 1)
-          (mapc (lambda (x) (setq overfull-boxes (+ x overfull-boxes)))
-                (mt-sum-errors-in-sections
-                 result
-                 section-list
-                 "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)")))
-    ;; Remember the best page size.
-    (if (> current-count 1)
-        (if (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
-               (+ (* 100 overfull-boxes) underfull-boxes))
-            (setq mt-best-overfull-boxes overfull-boxes
-                  mt-best-underfull-boxes underfull-boxes
-                  mt-best-file current-count)
-          (shell-command (concat "rm /tmp/tmp.macro-type."
-                                 (number-to-string current-count) ".*")))
-      ;; Set initial badness.
-      (setq mt-init-overfull-boxes overfull-boxes
-            mt-best-overfull-boxes overfull-boxes
-            mt-init-underfull-boxes underfull-boxes
-            mt-best-underfull-boxes underfull-boxes))
-    (setq mt-receive-count (+ mt-receive-count 1))
-    ;; Show the current state.
-    (when (boundp 'mt-init-overfull-boxes)
-      (message (mt-minibuffer-message mt-init-overfull-boxes
-                                      mt-best-overfull-boxes
-                                      mt-init-underfull-boxes
-                                      mt-best-underfull-boxes
-                                      mt-receive-count
-                                      calcs
-                                      file)))
-    ;; Finish calcs.
-    (when (>= mt-receive-count calcs)
-      (mt-final-calculation-IO calcs file section-list))))
+(defun mt-retrieve-file-info-IO (file)
+  (with-temp-buffer
+    (insert-file-contents file)
+    (let ((this-buffer (buffer-string)))
+      (with-temp-buffer
+        (insert
+         (car (split-string this-buffer "\n.*\\\\begin{document}.*\n")))
+        (write-file "/tmp/tmp.macro-type.begin"))
+      (with-temp-buffer
+        (insert
+         (car (cdr (split-string this-buffer "\n.*\\\\begin{document}.*\n"))))
+        (write-file "/tmp/tmp.macro-type.end")))
+    (shell-command-on-region
+     (point-min) (point-max)
+     (concat
+      "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
+      file " | grep -o ^[0-9]*")
+     t t)
+    (map 'list 'string-to-number (split-string (buffer-string)))))
+
+(defun mt-string ()
+  (shell-command "touch ~/fifafu"))
+
+(defun mt-pdflatex-IO (range file forks calcs local-count section-list)
+  "Starts multiple emacsen to work asynchronosly."
+  (async-start
+   `(lambda ()
+      ;; Inject variables into new emacsen.
+      ;;      'mt-string
+      (let* ((local-count ,local-count)
+             (size (+ (* -0.5 ,range)
+                      (* (- local-count 2)
+                         (/ ,range 1.0 (max 1 (- ,calcs 2)))))))
+        ;; Save different page sizes, using echo is for speed
+        (shell-command
+         (concat "echo \"\\usepackage{mdframed}"
+                 (when (and (> local-count 1)
+                            (or (>= size 0.0001)
+                                (<= size -0.0001)))
+                   (concat
+                    "\\addtolength"
+                    "{\\oddsidemargin}{" (number-to-string size) "mm}"
+                    "\\addtolength"
+                    "{\\evensidemargin}{" (number-to-string size) "mm}"
+                    "\\addtolength"
+                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
+                 "\n\\begin{document} \" > "
+                 (concat "/tmp/tmp.macro-type."
+                         (number-to-string local-count) ".header.tex")))
+        ;; Concatenate parts of the file and compile it.
+        ;; Doing this in emacs buffers is very slow.
+        (shell-command
+         (concat "cat"
+                 " /tmp/tmp.macro-type.begin"
+                 " /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".header.tex"
+                 " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".tex;"
+                 "pdflatex"
+                 " -output-directory /tmp"
+                 " -draftmode"
+                 " -interaction nonstopmode /tmp/tmp.macro-type."
+                 (number-to-string local-count) ".tex"
+                 " > /dev/null"))))
+   ;; Analyze the result of the async process.
+   `(lambda (x)
+      (when (mt-evaluate-result ,local-count ,file ,forks ',section-list
+                                (with-temp-buffer
+                                  (insert-file-contents
+                                   (concat "/tmp/tmp.macro-type."
+                                           (number-to-string ,local-count)
+                                           ".log"))
+                                  (buffer-string)))
+        (shell-command (concat "rm /tmp/tmp.macro-type."
+                               (number-to-string ,local-count) ".*")))
+      (when (boundp 'mt-init-overfull-boxes)
+        (message (mt-minibuffer-message mt-init-overfull-boxes
+                                        mt-best-overfull-boxes
+                                        mt-init-underfull-boxes
+                                        mt-best-underfull-boxes
+                                        mt-receive-count ,calcs 'file)))
+      (when (>= mt-receive-count ,calcs)
+        (mt-final-calculation-IO ,calcs ,file ',section-list))
+      (when (<= (+ ,local-count ,forks) ,calcs)
+        (mt-pdflatex-IO ,range ,file ,forks ,calcs
+                        (+ ,local-count ,forks) ',section-list)))))
 
 (defun mt-final-calculation-IO (calcs file section-list)
   (let ((section-count 0)
@@ -136,10 +152,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (mt-write-injection-IO (nth section-count section-list)
                                (nth (+ 1 section-count) section-list)
                                (mt-calculate-margin-change
-                                mt-range
-                                calcs
-                                (elt local-vector
-                                     section-count)
+                                mt-range calcs (elt local-vector
+                                                    section-count)
                                 mt-best-file)
                                mt-best-file))
       (setq section-count (+ 1 section-count))))
@@ -154,9 +168,9 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (car (split-string file "\.tex$")) ".macro-type.tex"
            " > /dev/null"))
   (mt-dump-log-file-IO file)
-  (mt-plot-log-file-IO file
-                       (length (elt mt-overfull-matrix 0))
-                       (length mt-overfull-matrix))
+  (shell-command (mt-plot-log-file-script file
+                                          (length (elt mt-overfull-matrix 0))
+                                          (length mt-overfull-matrix)))
   ;; Recalculate badness after mdframe injection.
   (with-temp-buffer
     (insert-file (concat
@@ -198,36 +212,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
-(defun mt-plot-log-file-IO (file sections calcs)
-  (shell-command
-   (concat "R -e \"data = read.table('"
-           (car (split-string file "\.tex$")) ".macro-type.plot.log"
-           "', sep=' ', colClasses='numeric', dec='.') ;"
-           "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
-           "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
-           "library(ggplot2);"
-           "library(grid);"
-           ;; "df = data.frame(col=rgb(0.9*(1 - over),
-           ;; 0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
-           ;; "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),
-           ;; 0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
-           "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),"
-           "0.9*(1 - sqrt(0.8*under+0.2*over)),"
-           "0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
-           "(x=1:" (number-to-string sections)
-           ", y=1:" (number-to-string calcs) "));"
-           "pdf('" (car (split-string file "\.tex$"))
-           ".macro-type.plot.pdf" "') ;"
-           "ggplot(df, aes(x=x, y=y))"
-           " + theme_bw()"
-           " + theme(rect=element_blank(),"
-           "line = element_blank(), text=element_blank())"
-           " + theme(axis.ticks.margin = unit(0, 'cm'),"
-           "plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), 'cm'))"
-           " + geom_tile(aes(fill=col))"
-           " + scale_fill_identity();"
-           "dev.off()\" > /dev/null")))
-
 (defun mt-write-injection-IO (this-section-line
                               next-section-line
                               margin-change
@@ -249,59 +233,70 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                            "/tmp/tmp.macro-type."
                            (number-to-string file-number) ".tex"))))
 
-(defun mt-pdflatex-IO (range file forks calcs local-count section-list)
-  "Starts multiple emacsen to work asynchronosly."
-  (async-start
-   `(lambda ()
-      ;; Inject variables into new emacsen.
-      (let* ((local-count ,local-count)
-             (size (+ (* -0.5 ,range)
-                      (* (- local-count 2)
-                         (/ ,range 1.0 (max 1 (- ,calcs 2)))))))
-        ;; Save different page sizes, using echo is for speed
-        (shell-command
-         (concat "echo \"\\usepackage{mdframed}"
-                 (when (and (> local-count 1)
-                            (or (>= size 0.0001)
-                                (<= size -0.0001)))
-                   (concat
-                    "\\addtolength"
-                    "{\\oddsidemargin}{" (number-to-string size) "mm}"
-                    "\\addtolength"
-                    "{\\evensidemargin}{" (number-to-string size) "mm}"
-                    "\\addtolength"
-                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
-                 "\n\\begin{document} \" > "
-                 (concat "/tmp/tmp.macro-type."
-                         (number-to-string local-count) ".header.tex")))
-        ;; Concatenate parts of the file, compile it and return log as string.
-        ;; Doing this in emacs buffers is very slow.
-        (shell-command
-         (concat "cat"
-                 " /tmp/tmp.macro-type.begin"
-                 " /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".header.tex"
-                 " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex;"
-                 "pdflatex"
-                 " -output-directory /tmp"
-                 " -draftmode"
-                 " -interaction nonstopmode /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex"
-                 " > /dev/null"))))
-   ;; Analyze the result of the async process.
-   `(lambda (result) (mt-evaluate-result-IO ,local-count
-                                            ,file
-                                            ,forks
-                                            ,calcs
-                                            ',section-list)
-      (when (<= (+ ,local-count ,forks) ,calcs)
-        (mt-pdflatex-IO ,range
-                        ,file
-                        ,forks
-                        ,calcs
-                        (+ ,local-count ,forks)
-                        ',section-list)))))
+(defun mt-evaluate-result (current-count file forks section-list result)
+  ;; Count overfull and underfull hboxes.
+  (let ((underfull-boxes 0)
+        (overfull-boxes 0)
+        (to-delete nil))
+    ;; Make a matrix of the badness of all sections with all sizes.
+    (aset mt-underfull-matrix
+          (- current-count 1)
+          (mapc (lambda (x) (setq underfull-boxes (+ x underfull-boxes)))
+                (mt-sum-errors-in-sections
+                 result
+                 section-list
+                 "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)")))
+    (aset mt-overfull-matrix
+          (- current-count 1)
+          (mapc (lambda (x) (setq overfull-boxes (+ x overfull-boxes)))
+                (mt-sum-errors-in-sections
+                 result
+                 section-list
+                 "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)")))
+    ;; Remember the best page size.
+    (if (> current-count 1)
+        (if (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
+               (+ (* 100 overfull-boxes) underfull-boxes))
+            (setq mt-best-overfull-boxes overfull-boxes
+                  mt-best-underfull-boxes underfull-boxes
+                  mt-best-file current-count)
+          (setq to-delete t))
+      ;; Set initial badness.
+      (setq mt-init-overfull-boxes overfull-boxes
+            mt-best-overfull-boxes overfull-boxes
+            mt-init-underfull-boxes underfull-boxes
+            mt-best-underfull-boxes underfull-boxes))
+    (setq mt-receive-count (+ mt-receive-count 1))
+    to-delete))
+
+(defun mt-plot-log-file-script (file sections calcs)
+  (concat "R -e \"data = read.table('"
+          (car (split-string file "\.tex$")) ".macro-type.plot.log"
+          "', sep=' ', colClasses='numeric', dec='.') ;"
+          "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
+          "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
+          "library(ggplot2);"
+          "library(grid);"
+          ;; "df = data.frame(col=rgb(0.9*(1 - over),
+          ;; 0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
+          ;; "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),
+          ;; 0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
+          "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),"
+          "0.9*(1 - sqrt(0.8*under+0.2*over)),"
+          "0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
+          "(x=1:" (number-to-string sections)
+          ", y=1:" (number-to-string calcs) "));"
+          "pdf('" (car (split-string file "\.tex$"))
+          ".macro-type.plot.pdf" "') ;"
+          "ggplot(df, aes(x=x, y=y))"
+          " + theme_bw()"
+          " + theme(rect=element_blank(),"
+          "line = element_blank(), text=element_blank())"
+          " + theme(axis.ticks.margin = unit(0, 'cm'),"
+          "plot.margin = unit(c(-0.9,-0.9,-1.3,-1.3), 'cm'))"
+          " + geom_tile(aes(fill=col))"
+          " + scale_fill_identity();"
+          "dev.off()\" > /dev/null"))
 
 (defun mt-inject-mdframes (calcs
                            section-list
