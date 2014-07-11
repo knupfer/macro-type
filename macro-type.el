@@ -279,11 +279,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           "library(grid);"
           ;; "df = data.frame(col=rgb(0.9*(1 - over),
           ;; 0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
-          ;; "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),
-          ;; 0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
-          "df = data.frame(col=rgb(0.9*(1 - sqrt(0.8*over+0.2*under)),"
-          "0.9*(1 - sqrt(0.8*under+0.2*over)),"
-          "0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
+          "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),"
+          "0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
           "(x=1:" (number-to-string sections)
           ", y=1:" (number-to-string calcs) "));"
           "pdf('" (car (split-string file "\.tex$"))
