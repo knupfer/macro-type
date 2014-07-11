@@ -21,7 +21,7 @@
 ;;; Code:
 (require 'async)
 
-(defun mt-macro-type-tex-file (file range calculations forks)
+(defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
 It compiles a lot of times the same file and looks at the log files to
 minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
@@ -40,8 +40,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           mt-range range
           mt-best-file 1
           ;; Get line numbers of sections, including begin and end document.
-          mt-underfull-matrix (make-vector calculations 0)
-          mt-overfull-matrix (make-vector calculations 0))
+          mt-underfull-matrix (make-vector calcs 0)
+          mt-overfull-matrix (make-vector calcs 0))
     ;; Save the header and the body of the tex file to access them faster
     (with-temp-buffer
       (insert-file-contents file)
@@ -65,11 +65,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                    "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
                    file " | grep -o ^[0-9]*"))))))
       (while (and (<= local-count forks)
-                  (<= local-count calculations))
-        (mt-pdflatex-IO range file forks calculations local-count section-list)
+                  (<= local-count calcs))
+        (mt-pdflatex-IO range file forks calcs local-count section-list)
         (setq local-count (+ 1 local-count))))))
 
-(defun mt-evaluate-result-IO (current-count file forks calculations section-list)
+(defun mt-evaluate-result-IO (current-count file forks calcs section-list)
   ;; Count overfull and underfull hboxes.
   (let ((underfull-boxes 0)
         (overfull-boxes 0)
@@ -115,15 +115,15 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                       mt-init-underfull-boxes
                                       mt-best-underfull-boxes
                                       mt-receive-count
-                                      calculations
+                                      calcs
                                       file)))
-    ;; Finish calculations.
-    (when (>= mt-receive-count calculations)
-      (mt-final-calculation-IO calculations file section-list))))
+    ;; Finish calcs.
+    (when (>= mt-receive-count calcs)
+      (mt-final-calculation-IO calcs file section-list))))
 
-(defun mt-final-calculation-IO (calculations file section-list)
+(defun mt-final-calculation-IO (calcs file section-list)
   (let ((section-count 0)
-        (local-vector (mt-inject-mdframes calculations
+        (local-vector (mt-inject-mdframes calcs
                                           section-list
                                           mt-best-file
                                           mt-overfull-matrix
@@ -137,7 +137,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                (nth (+ 1 section-count) section-list)
                                (mt-calculate-margin-change
                                 mt-range
-                                calculations
+                                calcs
                                 (elt local-vector
                                      section-count)
                                 mt-best-file)
@@ -181,7 +181,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                "^Underfull \\\\hbox (badness \\([0-9\.]+\\)).*lines \\([0-9]+\\)"))
         y)
       mt-receive-count
-      calculations
+      calcs
       file
       t))))
 
@@ -198,7 +198,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
-(defun mt-plot-log-file-IO (file sections calculations)
+(defun mt-plot-log-file-IO (file sections calcs)
   (shell-command
    (concat "R -e \"data = read.table('"
            (car (split-string file "\.tex$")) ".macro-type.plot.log"
@@ -215,7 +215,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            "0.9*(1 - sqrt(0.8*under+0.2*over)),"
            "0.9*(1.0 - sqrt(0.2*(over + under)))), expand.grid"
            "(x=1:" (number-to-string sections)
-           ", y=1:" (number-to-string calculations) "));"
+           ", y=1:" (number-to-string calcs) "));"
            "pdf('" (car (split-string file "\.tex$"))
            ".macro-type.plot.pdf" "') ;"
            "ggplot(df, aes(x=x, y=y))"
@@ -249,7 +249,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                            "/tmp/tmp.macro-type."
                            (number-to-string file-number) ".tex"))))
 
-(defun mt-pdflatex-IO (range file forks calculations local-count section-list)
+(defun mt-pdflatex-IO (range file forks calcs local-count section-list)
   "Starts multiple emacsen to work asynchronosly."
   (async-start
    `(lambda ()
@@ -257,7 +257,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       (let* ((local-count ,local-count)
              (size (+ (* -0.5 ,range)
                       (* (- local-count 2)
-                         (/ ,range 1.0 (max 1 (- ,calculations 2)))))))
+                         (/ ,range 1.0 (max 1 (- ,calcs 2)))))))
         ;; Save different page sizes, using echo is for speed
         (shell-command
          (concat "echo \"\\usepackage{mdframed}"
@@ -293,12 +293,17 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
    `(lambda (result) (mt-evaluate-result-IO ,local-count
                                             ,file
                                             ,forks
-                                            ,calculations
+                                            ,calcs
                                             ',section-list)
-      (when (<= (+ ,local-count ,forks) ,calculations)
-        (mt-pdflatex-IO ,range ,file ,forks ,calculations (+ ,local-count ,forks) ',section-list)))))
+      (when (<= (+ ,local-count ,forks) ,calcs)
+        (mt-pdflatex-IO ,range
+                        ,file
+                        ,forks
+                        ,calcs
+                        (+ ,local-count ,forks)
+                        ',section-list)))))
 
-(defun mt-inject-mdframes (calculations
+(defun mt-inject-mdframes (calcs
                            section-list
                            best-file
                            overfull-matrix
@@ -360,11 +365,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                     underfull-matrix
                                     overfull-matrix
                                     current-section)
-  (let ((calculations (length underfull-matrix))
+  (let ((calcs (length underfull-matrix))
         (local-file-number best-file-number)
         (local-file-count 0))
-    (while (< local-file-count calculations)
-      (when (and (<= (+ local-file-count best-file-number) calculations)
+    (while (< local-file-count calcs)
+      (when (and (<= (+ local-file-count best-file-number) calcs)
                  (< (+ (* 100 (elt (elt overfull-matrix
                                         (+ local-file-count
                                            (- best-file-number 1)))
@@ -410,11 +415,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
              current-section)) 0))
 
 (defun mt-calculate-margin-change (range
-                                   calculations
+                                   calcs
                                    local-file-number
                                    best-file-number)
   (let ((margin-increase (* -0.5 range))
-        (increment (/ range 1.0 (max 1 (- calculations 2)))))
+        (increment (/ range 1.0 (max 1 (- calcs 2)))))
     (if (= local-file-number 1)
         (* -1 (+ margin-increase
                  (* (- best-file-number 2) increment)))
@@ -427,7 +432,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                             init-underfull
                                             best-underfull
                                             receive
-                                            calculations
+                                            calcs
                                             result-file
                                             &optional last-run)
   (concat
@@ -452,7 +457,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                   (number-to-string (round best-underfull))))
    "  ||  "
    (number-to-string receive) "/"
-   (number-to-string calculations) " compiled"
+   (number-to-string calcs) " compiled"
    (when last-run (concat "
     output: " (car (split-string result-file "\.tex$"))
     ".macro-type.*"))))
