@@ -39,6 +39,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (setq mt-receive-count 0
           mt-range range
           mt-best-file 1
+          mt-benchmark (current-time)
           ;; Get line numbers of sections, including begin and end document.
           mt-underfull-matrix (make-vector calcs 0)
           mt-overfull-matrix (make-vector calcs 0))
@@ -173,9 +174,9 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                           (length mt-overfull-matrix)))
   ;; Recalculate badness after mdframe injection.
   (with-temp-buffer
-    (insert-file (concat
-                  (car (split-string file "\.tex$"))
-                  ".macro-type.log"))
+    (insert-file-contents (concat
+                           (car (split-string file "\.tex$"))
+                           ".macro-type.log"))
     (message
      (mt-minibuffer-message
       mt-init-overfull-boxes
@@ -452,7 +453,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
    (number-to-string calcs) " compiled"
    (when last-run (concat "
     output: " (car (split-string result-file "\.tex$"))
-    ".macro-type.*"))))
+    ".macro-type.* calculated in "
+    (format-time-string "%s" (time-since mt-benchmark)) "s"))))
 
 (defun mt-blur-mdframe (input-list best-file)
   (let ((count 0)
