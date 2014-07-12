@@ -21,6 +21,16 @@
 ;;; Code:
 (require 'async)
 
+(defvar mt-receive-count)
+(defvar mt-best-file)
+(defvar mt-underfull-matrix)
+(defvar mt-overfull-matrix)
+(defvar mt-init-underfull-boxes)
+(defvar mt-init-overfull-boxes)
+(defvar mt-best-underfull-boxes)
+(defvar mt-best-overfull-boxes)
+(defvar mt-benchmark)
+
 (defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
 It compiles a lot of times the same file and looks at the log files to
@@ -37,8 +47,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
   (if (car (file-attributes file 0))
       (error "You can't choose a directory")
     (setq mt-receive-count 0
-          mt-range range
-          mt-best-file 1
           mt-benchmark (current-time)
           ;; Get line numbers of sections, including begin and end document.
           mt-underfull-matrix (make-vector calcs 0)
@@ -133,12 +141,12 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                         mt-best-underfull-boxes
                                         mt-receive-count ,calcs 'file)))
       (when (>= mt-receive-count ,calcs)
-        (mt-final-calculation-IO ,calcs ,file ',section-list))
+        (mt-final-calculation-IO ,calcs ,file ',section-list ,range))
       (when (<= (+ ,local-count ,forks) ,calcs)
         (mt-pdflatex-IO ,range ,file ,forks ,calcs
                         (+ ,local-count ,forks) ',section-list)))))
 
-(defun mt-final-calculation-IO (calcs file section-list)
+(defun mt-final-calculation-IO (calcs file section-list range)
   (let ((section-count 0)
         (local-vector (mt-inject-mdframes calcs
                                           section-list
@@ -153,8 +161,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (mt-write-injection-IO (nth section-count section-list)
                                (nth (+ 1 section-count) section-list)
                                (mt-calculate-margin-change
-                                mt-range calcs (elt local-vector
-                                                    section-count)
+                                range calcs (elt local-vector
+                                                 section-count)
                                 mt-best-file)
                                mt-best-file))
       (setq section-count (+ 1 section-count))))
@@ -266,7 +274,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       (setq mt-init-overfull-boxes overfull-boxes
             mt-best-overfull-boxes overfull-boxes
             mt-init-underfull-boxes underfull-boxes
-            mt-best-underfull-boxes underfull-boxes))
+            mt-best-underfull-boxes underfull-boxes
+            mt-best-file current-count))
     (setq mt-receive-count (+ mt-receive-count 1))
     to-delete))
 
@@ -278,8 +287,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
           "library(ggplot2);"
           "library(grid);"
-          ;; "df = data.frame(col=rgb(0.9*(1 - over),
-          ;; 0.9*(1 - under),0.9*(1.0 - 0.5*over - 0.5*under)), expand.grid"
           "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),"
           "0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
           "(x=1:" (number-to-string sections)
