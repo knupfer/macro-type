@@ -149,10 +149,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 (defun mt-final-calculation-IO (calcs file section-list range)
   (let ((section-count 0)
         (local-vector (mt-inject-mdframes calcs
-                                          section-list
                                           mt-best-file
                                           mt-overfull-matrix
-                                          mt-underfull-matrix)))
+                                          mt-underfull-matrix
+                                          4
+                                          (make-vector (- (length section-list) 1) mt-best-file))))
     (while (< section-count (- (length section-list) 1))
       ;; Calculate change of the margins, considering already changed size.
       (when (not (= (elt local-vector section-count)
@@ -304,39 +305,36 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           "dev.off()\" > /dev/null"))
 
 (defun mt-inject-mdframes (calcs
-                           section-list
                            best-file
                            overfull-matrix
-                           underfull-matrix)
+                           underfull-matrix
+                           number-of-blurs
+                           used-calculation-vector)
   "Change pagesize for sections."
-  (let ((section-count 0)
-        (blur-count 0)
-        (blur-vector (make-vector (- (length section-list) 1)
-                                  best-file))
-        (used-calculation-vector
-         (make-vector (- (length section-list) 1) best-file)))
-    (while (< blur-count 3)
-      (setq blur-count (+ blur-count 1)
-            section-count 0
-            blur-vector (mt-blur-mdframe used-calculation-vector
-                                         best-file)
-            used-calculation-vector blur-vector)
-      ;; Do this for every section.
-      (while (< section-count (- (length section-list) 1))
-        (let ((local-best-file (elt blur-vector section-count)))
-          ;; Calculate only when there is badness.
-          (when (mt-is-there-badness-p overfull-matrix
-                                       underfull-matrix
-                                       local-best-file
-                                       section-count)
-            ;; Look at all alternative pagesizes.
-            (aset used-calculation-vector section-count
-                  (mt-nearest-good-file-number local-best-file
-                                               underfull-matrix
-                                               overfull-matrix
-                                               section-count))))
-        (setq section-count (+ 1 section-count))))
-    used-calculation-vector))
+  (let* ((section-count 0)
+         (initial-vector used-calculation-vector))
+    ;; Do this for every section.
+    (while (< section-count (length used-calculation-vector))
+      (let ((local-best-file (elt initial-vector section-count)))
+        ;; Calculate only when there is badness.
+        (when (mt-is-there-badness-p overfull-matrix
+                                     underfull-matrix
+                                     local-best-file
+                                     section-count)
+          ;; Look at all alternative pagesizes.
+          (aset used-calculation-vector section-count
+                (mt-nearest-good-file-number local-best-file
+                                             underfull-matrix
+                                             overfull-matrix
+                                             section-count
+                                             local-best-file
+                                             0))))
+      (setq section-count (+ 1 section-count)))
+    (if (> number-of-blurs 0)
+        (mt-inject-mdframes calcs best-file overfull-matrix
+                            underfull-matrix (- number-of-blurs 1)
+                            (mt-blur-mdframe used-calculation-vector best-file))
+      used-calculation-vector)))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (- (length section-list) 1) 0)))
@@ -364,45 +362,47 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 (defun mt-nearest-good-file-number (best-file-number
                                     underfull-matrix
                                     overfull-matrix
-                                    current-section)
-  (let ((calcs (length underfull-matrix))
-        (local-file-number best-file-number)
-        (local-file-count 0))
-    (while (< local-file-count calcs)
-      (when (and (<= (+ local-file-count best-file-number) calcs)
-                 (< (+ (* 100 (elt (elt overfull-matrix
-                                        (+ local-file-count
-                                           (- best-file-number 1)))
-                                   current-section))
-                       (elt (elt underfull-matrix
-                                 (+ local-file-count
-                                    (- best-file-number 1)))
-                            current-section))
-                    (+ (* 100 (elt (elt overfull-matrix
-                                        (- local-file-number 1))
-                                   current-section))
-                       (elt (elt underfull-matrix
-                                 (- local-file-number 1))
-                            current-section))))
-        (setq local-file-number (+ local-file-count best-file-number)))
-      (when (and (> (- best-file-number local-file-count) 0)
-                 (< (+ (* 100 (elt (elt overfull-matrix
-                                        (- (- best-file-number 1)
-                                           local-file-count))
-                                   current-section))
-                       (elt (elt underfull-matrix
-                                 (- (- best-file-number 1)
-                                    local-file-count))
-                            current-section))
-                    (+ (* 100 (elt (elt overfull-matrix
-                                        (- local-file-number 1))
-                                   current-section))
-                       (elt (elt underfull-matrix
-                                 (- local-file-number 1))
-                            current-section))))
-        (setq local-file-number (- best-file-number local-file-count)))
-      (setq local-file-count (+ 1 local-file-count)))
-    local-file-number))
+                                    current-section
+                                    local-file-number
+                                    local-file-count)
+  (let ((calcs (length underfull-matrix)))
+    (when (and (<= (+ local-file-count best-file-number) calcs)
+               (< (+ (* 100 (elt (elt overfull-matrix
+                                      (+ local-file-count
+                                         (- best-file-number 1)))
+                                 current-section))
+                     (elt (elt underfull-matrix
+                               (+ local-file-count
+                                  (- best-file-number 1)))
+                          current-section))
+                  (+ (* 100 (elt (elt overfull-matrix
+                                      (- local-file-number 1))
+                                 current-section))
+                     (elt (elt underfull-matrix
+                               (- local-file-number 1))
+                          current-section))))
+      (setq local-file-number (+ local-file-count best-file-number)))
+    (when (and (> (- best-file-number local-file-count) 0)
+               (< (+ (* 100 (elt (elt overfull-matrix
+                                      (- (- best-file-number 1)
+                                         local-file-count))
+                                 current-section))
+                     (elt (elt underfull-matrix
+                               (- (- best-file-number 1)
+                                  local-file-count))
+                          current-section))
+                  (+ (* 100 (elt (elt overfull-matrix
+                                      (- local-file-number 1))
+                                 current-section))
+                     (elt (elt underfull-matrix
+                               (- local-file-number 1))
+                          current-section))))
+      (setq local-file-number (- best-file-number local-file-count)))
+    (if (< local-file-count calcs)
+        (mt-nearest-good-file-number best-file-number underfull-matrix
+                                     overfull-matrix current-section
+                                     local-file-number (+ 1 local-file-count))
+      local-file-number)))
 
 (defun mt-is-there-badness-p (overfull-matrix
                               underfull-matrix
