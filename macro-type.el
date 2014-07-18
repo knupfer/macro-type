@@ -151,7 +151,12 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                           4
                                           (make-vector (- (length section-list) 1) mt-best-file))))
     (mt-write-injection-IO mt-best-file local-vector
-                           0 range calcs section-list))
+                           0 section-list
+                           (map 'list
+                                (lambda (x)
+                                  (mt-calculate-margin-change range calcs x
+                                                              mt-best-file))
+                                local-vector)))
   (shell-command
    (concat "cp /tmp/tmp.macro-type."
            (number-to-string mt-best-file) ".tex "
@@ -209,15 +214,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 
 (defun mt-write-injection-IO (file-number
                               local-vector section-count
-                              range calcs section-list)
-  (when (not (= (elt local-vector section-count)
-                file-number))
+                              section-list margin-list)
+  (when (not (= (elt local-vector section-count) file-number))
     (let ((this-section-line (nth section-count section-list))
           (next-section-line  (nth (+ 1 section-count) section-list))
-          (margin-change (mt-calculate-margin-change range calcs
-                                                     (elt local-vector
-                                                          section-count)
-                                                     file-number)))
+          (margin-change (nth section-count margin-list)))
       (when (or (>= margin-change 0.0001)
                 (<= margin-change -0.0001))
         (shell-command (concat "sed -i '" (number-to-string this-section-line)
@@ -236,7 +237,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                (number-to-string file-number) ".tex")))))
   (when (< section-count (- (length section-list) 2))
     (mt-write-injection-IO file-number local-vector (+ 1 section-count)
-                           range calcs section-list)))
+                           section-list margin-list)))
 
 (defun mt-evaluate-result (current-count file forks section-list result)
   ;; Count overfull and underfull hboxes.
