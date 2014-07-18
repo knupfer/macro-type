@@ -79,9 +79,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
      t t)
     (map 'list 'string-to-number (split-string (buffer-string)))))
 
-(defun mt-string ()
-  (shell-command "touch ~/fifafu"))
-
 (defun mt-pdflatex-IO (range file forks calcs local-count section-list)
   "Starts multiple emacsen to work asynchronosly."
   (async-start
@@ -147,26 +144,14 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                         (+ ,local-count ,forks) ',section-list)))))
 
 (defun mt-final-calculation-IO (calcs file section-list range)
-  (let ((section-count 0)
-        (local-vector (mt-inject-mdframes calcs
+  (let ((local-vector (mt-inject-mdframes calcs
                                           mt-best-file
                                           mt-overfull-matrix
                                           mt-underfull-matrix
                                           4
                                           (make-vector (- (length section-list) 1) mt-best-file))))
-    (while (< section-count (- (length section-list) 1))
-      ;; Calculate change of the margins, considering already changed size.
-      (when (not (= (elt local-vector section-count)
-                    mt-best-file))
-        ;; Inject new margin size.
-        (mt-write-injection-IO (nth section-count section-list)
-                               (nth (+ 1 section-count) section-list)
-                               (mt-calculate-margin-change
-                                range calcs (elt local-vector
-                                                 section-count)
-                                mt-best-file)
-                               mt-best-file))
-      (setq section-count (+ 1 section-count))))
+    (mt-write-injection-IO mt-best-file local-vector
+                           0 range calcs section-list))
   (shell-command
    (concat "cp /tmp/tmp.macro-type."
            (number-to-string mt-best-file) ".tex "
@@ -222,26 +207,36 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
-(defun mt-write-injection-IO (this-section-line
-                              next-section-line
-                              margin-change
-                              file-number)
-  (when (or (>= margin-change 0.0001)
-            (<= margin-change -0.0001))
-    (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                           " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
-                           "[hidealllines=true,"
-                           "innertopmargin=2.1pt,skipabove=0mm,"
-                           "innerleftmargin="
-                           (number-to-string margin-change) "mm,"
-                           "innerrightmargin="
-                           (number-to-string margin-change) "mm]"
-                           "/' /tmp/tmp.macro-type."
-                           (number-to-string file-number) ".tex"))
-    (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                           " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
-                           "/tmp/tmp.macro-type."
-                           (number-to-string file-number) ".tex"))))
+(defun mt-write-injection-IO (file-number
+                              local-vector section-count
+                              range calcs section-list)
+  (when (not (= (elt local-vector section-count)
+                file-number))
+    (let ((this-section-line (nth section-count section-list))
+          (next-section-line  (nth (+ 1 section-count) section-list))
+          (margin-change (mt-calculate-margin-change range calcs
+                                                     (elt local-vector
+                                                          section-count)
+                                                     file-number)))
+      (when (or (>= margin-change 0.0001)
+                (<= margin-change -0.0001))
+        (shell-command (concat "sed -i '" (number-to-string this-section-line)
+                               " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
+                               "[hidealllines=true,"
+                               "innertopmargin=2.1pt,skipabove=0mm,"
+                               "innerleftmargin="
+                               (number-to-string margin-change) "mm,"
+                               "innerrightmargin="
+                               (number-to-string margin-change) "mm]"
+                               "/' /tmp/tmp.macro-type."
+                               (number-to-string file-number) ".tex"))
+        (shell-command (concat "sed -i '" (number-to-string next-section-line)
+                               " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
+                               "/tmp/tmp.macro-type."
+                               (number-to-string file-number) ".tex")))))
+  (when (< section-count (- (length section-list) 2))
+    (mt-write-injection-IO file-number local-vector (+ 1 section-count)
+                           range calcs section-list)))
 
 (defun mt-evaluate-result (current-count file forks section-list result)
   ;; Count overfull and underfull hboxes.
@@ -330,11 +325,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                              local-best-file
                                              0))))
       (setq section-count (+ 1 section-count)))
-    (if (> number-of-blurs 0)
-        (mt-inject-mdframes calcs best-file overfull-matrix
-                            underfull-matrix (- number-of-blurs 1)
-                            (mt-blur-mdframe used-calculation-vector best-file))
-      used-calculation-vector)))
+    (if (<= number-of-blurs 0)
+        used-calculation-vector
+      (mt-inject-mdframes calcs best-file overfull-matrix
+                          underfull-matrix (- number-of-blurs 1)
+                          (mt-blur-mdframe used-calculation-vector best-file)))))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (- (length section-list) 1) 0)))
@@ -359,12 +354,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
-(defun mt-nearest-good-file-number (best-file-number
-                                    underfull-matrix
-                                    overfull-matrix
-                                    current-section
-                                    local-file-number
-                                    local-file-count)
+(defun mt-nearest-good-file-number (best-file-number underfull-matrix
+                                                     overfull-matrix
+                                                     current-section
+                                                     local-file-number
+                                                     local-file-count)
   (let ((calcs (length underfull-matrix)))
     (when (and (<= (+ local-file-count best-file-number) calcs)
                (< (+ (* 100 (elt (elt overfull-matrix
@@ -398,11 +392,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                (- local-file-number 1))
                           current-section))))
       (setq local-file-number (- best-file-number local-file-count)))
-    (if (< local-file-count calcs)
-        (mt-nearest-good-file-number best-file-number underfull-matrix
-                                     overfull-matrix current-section
-                                     local-file-number (+ 1 local-file-count))
-      local-file-number)))
+    (if (>= local-file-count calcs)
+        local-file-number
+      (mt-nearest-good-file-number best-file-number underfull-matrix
+                                   overfull-matrix current-section
+                                   local-file-number (+ 1 local-file-count)))))
 
 (defun mt-is-there-badness-p (overfull-matrix
                               underfull-matrix
@@ -480,3 +474,4 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 (provide 'macro-type)
 
 ;;; macro-type.el ends here
+;; 479
