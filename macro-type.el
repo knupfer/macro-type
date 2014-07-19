@@ -20,7 +20,6 @@
 
 ;;; Code:
 (require 'async)
-(require 'tco)
 
 (defvar mt-receive-count)
 (defvar mt-best-file)
@@ -31,6 +30,7 @@
 (defvar mt-best-underfull-boxes)
 (defvar mt-best-overfull-boxes)
 (defvar mt-benchmark)
+(defvar mt-number-of-blurs 4)
 
 (defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
@@ -148,9 +148,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
   (let ((local-vector (mt-inject-mdframes calcs mt-best-file
                                           mt-overfull-matrix
                                           mt-underfull-matrix
-                                          4 (make-vector
-                                             (- (length section-list) 1)
-                                             mt-best-file))))
+                                          mt-number-of-blurs
+                                          (make-vector
+                                           (- (length section-list) 1)
+                                           mt-best-file))))
     (mt-write-injection-IO mt-best-file section-list
                            (map 'list
                                 (lambda (x)
@@ -350,11 +351,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
-(defun-tco mt-nearest-good-file-number (best-file-number underfull-matrix
-                                                         overfull-matrix
-                                                         current-section
-                                                         local-file-number
-                                                         local-file-count)
+(defun mt-nearest-good-file-number (best-file-number underfull-matrix
+                                                     overfull-matrix
+                                                     current-section
+                                                     local-file-number
+                                                     local-file-count)
   (let ((calcs (length underfull-matrix)))
     (when (and (<= (+ local-file-count best-file-number) calcs)
                (< (+ (* 100 (elt (elt overfull-matrix
@@ -453,20 +454,16 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     ".macro-type.* calculated in "
     (format-time-string "%s" (time-since mt-benchmark)) "s"))))
 
-(defun mt-blur-mdframe (input-list best-file)
-  (let* ((local-count 0)
-         (blur (make-vector (length input-list) 0))
-         (local-list (map 'list (lambda (x) (- x best-file)) input-list))
-         (local-list (append (list (nth 1 local-list)) local-list
-                             (list (nth (- (length local-list) 2) local-list)))))
-    (while (< local-count (length input-list))
-      (aset blur local-count (+ best-file (/ (+ (nth local-count local-list)
-                                                (nth (+ local-count 1) local-list)
-                                                (nth (+ local-count 2) local-list)) 3)))
-      (setq local-count (+ local-count 1)))
-    blur))
+(defun mt-blur-mdframe (input best-file &optional result)
+  (when (not result)
+    (setq input (map 'list (lambda (x) (- x best-file)) input))
+    (setq input (append (list (nth 1 input)) input
+                        (list (nth (- (length input) 2) input)))))
+  (if (not (cdr (cdr input))) (vconcat (reverse result))
+    (let ((new (cons (+ best-file (/ (+ (pop input) (car input)
+                                        (car (cdr input))) 3)) result)))
+      (mt-blur-mdframe input best-file new))))
 
 (provide 'macro-type)
 
 ;;; macro-type.el ends here
-;; 472
