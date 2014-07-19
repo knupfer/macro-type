@@ -20,6 +20,7 @@
 
 ;;; Code:
 (require 'async)
+(require 'tco)
 
 (defvar mt-receive-count)
 (defvar mt-best-file)
@@ -349,11 +350,11 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (goto-char (point-min))
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
-(defun mt-nearest-good-file-number (best-file-number underfull-matrix
-                                                     overfull-matrix
-                                                     current-section
-                                                     local-file-number
-                                                     local-file-count)
+(defun-tco mt-nearest-good-file-number (best-file-number underfull-matrix
+                                                         overfull-matrix
+                                                         current-section
+                                                         local-file-number
+                                                         local-file-count)
   (let ((calcs (length underfull-matrix)))
     (when (and (<= (+ local-file-count best-file-number) calcs)
                (< (+ (* 100 (elt (elt overfull-matrix
@@ -453,20 +454,19 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (format-time-string "%s" (time-since mt-benchmark)) "s"))))
 
 (defun mt-blur-mdframe (input-list best-file)
-  (let ((count 0)
-        (blur (make-vector (length input-list) 0))
-        (local-list (map 'list (lambda (x) (- x best-file)) input-list)))
-    (add-to-list 'local-list (nth 1 local-list) nil (lambda (x y) nil))
-    (add-to-list 'local-list (nth (- (length local-list) 2) local-list)
-                 t (lambda (x y) nil))
-    (while (< count (length input-list))
-      (aset blur count (+ best-file (/ (+ (nth count local-list)
-                                          (nth (+ count 1) local-list)
-                                          (nth (+ count 2) local-list)) 3)))
-      (setq count (+ count 1)))
+  (let* ((local-count 0)
+         (blur (make-vector (length input-list) 0))
+         (local-list (map 'list (lambda (x) (- x best-file)) input-list))
+         (local-list (append (list (nth 1 local-list)) local-list
+                             (list (nth (- (length local-list) 2) local-list)))))
+    (while (< local-count (length input-list))
+      (aset blur local-count (+ best-file (/ (+ (nth local-count local-list)
+                                                (nth (+ local-count 1) local-list)
+                                                (nth (+ local-count 2) local-list)) 3)))
+      (setq local-count (+ local-count 1)))
     blur))
 
 (provide 'macro-type)
 
 ;;; macro-type.el ends here
-;; 479
+;; 472
