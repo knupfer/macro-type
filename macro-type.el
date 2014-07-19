@@ -144,14 +144,13 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                         (+ ,local-count ,forks) ',section-list)))))
 
 (defun mt-final-calculation-IO (calcs file section-list range)
-  (let ((local-vector (mt-inject-mdframes calcs
-                                          mt-best-file
+  (let ((local-vector (mt-inject-mdframes calcs mt-best-file
                                           mt-overfull-matrix
                                           mt-underfull-matrix
-                                          4
-                                          (make-vector (- (length section-list) 1) mt-best-file))))
-    (mt-write-injection-IO mt-best-file local-vector
-                           0 section-list
+                                          4 (make-vector
+                                             (- (length section-list) 1)
+                                             mt-best-file))))
+    (mt-write-injection-IO mt-best-file section-list
                            (map 'list
                                 (lambda (x)
                                   (mt-calculate-margin-change range calcs x
@@ -212,32 +211,27 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
-(defun mt-write-injection-IO (file-number
-                              local-vector section-count
-                              section-list margin-list)
-  (when (not (= (elt local-vector section-count) file-number))
-    (let ((this-section-line (nth section-count section-list))
-          (next-section-line  (nth (+ 1 section-count) section-list))
-          (margin-change (nth section-count margin-list)))
-      (when (or (>= margin-change 0.0001)
-                (<= margin-change -0.0001))
-        (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                               " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
-                               "[hidealllines=true,"
-                               "innertopmargin=2.1pt,skipabove=0mm,"
-                               "innerleftmargin="
-                               (number-to-string margin-change) "mm,"
-                               "innerrightmargin="
-                               (number-to-string margin-change) "mm]"
-                               "/' /tmp/tmp.macro-type."
-                               (number-to-string file-number) ".tex"))
-        (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                               " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
-                               "/tmp/tmp.macro-type."
-                               (number-to-string file-number) ".tex")))))
-  (when (< section-count (- (length section-list) 2))
-    (mt-write-injection-IO file-number local-vector (+ 1 section-count)
-                           section-list margin-list)))
+(defun mt-write-injection-IO (file-number section-list margin-list)
+  (let ((this-section-line (pop section-list))
+        (next-section-line (car section-list))
+        (margin-change (pop margin-list)))
+    (when (not (= margin-change 0))
+      (shell-command (concat "sed -i '" (number-to-string this-section-line)
+                             " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
+                             "[hidealllines=true,"
+                             "innertopmargin=2.1pt,skipabove=0mm,"
+                             "innerleftmargin="
+                             (number-to-string margin-change) "mm,"
+                             "innerrightmargin="
+                             (number-to-string margin-change) "mm]"
+                             "/' /tmp/tmp.macro-type."
+                             (number-to-string file-number) ".tex"))
+      (shell-command (concat "sed -i '" (number-to-string next-section-line)
+                             " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
+                             "/tmp/tmp.macro-type."
+                             (number-to-string file-number) ".tex"))))
+  (when margin-list
+    (mt-write-injection-IO file-number section-list margin-list)))
 
 (defun mt-evaluate-result (current-count file forks section-list result)
   ;; Count overfull and underfull hboxes.
@@ -327,7 +321,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                              0))))
       (setq section-count (+ 1 section-count)))
     (if (<= number-of-blurs 0)
-        used-calculation-vector
+        (append used-calculation-vector nil)
       (mt-inject-mdframes calcs best-file overfull-matrix
                           underfull-matrix (- number-of-blurs 1)
                           (mt-blur-mdframe used-calculation-vector best-file)))))
