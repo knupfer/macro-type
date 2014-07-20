@@ -350,7 +350,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (re-search-forward "/$\\|\\.tex$" nil t)))
 
 (defun mt-nearest-good-file-number (best-file-number combined-list)
-  (let ((calcs (length underfull-matrix))
+  (let ((calcs (length combined-list))
         (local-file-count 0)
         (local-file-number best-file-number))
     (while (<= local-file-count calcs)
