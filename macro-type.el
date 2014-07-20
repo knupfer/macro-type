@@ -25,8 +25,8 @@
 (defvar mt-best-file)
 (defvar mt-underfull-matrix)
 (defvar mt-overfull-matrix)
-(defvar mt-init-underfull-boxes)
-(defvar mt-init-overfull-boxes)
+(defvar mt-init-underfull-boxes nil)
+(defvar mt-init-overfull-boxes nil)
 (defvar mt-best-underfull-boxes)
 (defvar mt-best-overfull-boxes)
 (defvar mt-benchmark)
@@ -52,6 +52,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (setq mt-receive-count 0
           mt-no-overfull t
           mt-no-underfull t
+          mt-best-overfull-boxes nil
           mt-benchmark (current-time)
           ;; Get line numbers of sections, including begin and end document.
           mt-underfull-matrix (make-vector calcs 0)
@@ -105,7 +106,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                     (buffer-string)))
           (shell-command (concat "rm /tmp/tmp.macro-type."
                                  (number-to-string ,local-count) ".*")))
-        (when (boundp 'mt-init-overfull-boxes)
+        (when mt-init-overfull-boxes
           (message (mt-minibuffer-message mt-init-overfull-boxes
                                           mt-best-overfull-boxes
                                           mt-init-underfull-boxes
@@ -265,7 +266,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (when (and mt-no-overfull (> overfull-boxes 0))
       (setq mt-no-overfull nil))
     ;; Remember the best page size.
-    (if (> current-count 1)
+    (when (= current-count 1)
+      (setq mt-init-overfull-boxes overfull-boxes
+            mt-init-underfull-boxes underfull-boxes))
+    (if mt-best-overfull-boxes
         (if (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
                (+ (* 100 overfull-boxes) underfull-boxes))
             (setq mt-best-overfull-boxes overfull-boxes
@@ -273,9 +277,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                   mt-best-file current-count)
           (setq to-delete t))
       ;; Set initial badness.
-      (setq mt-init-overfull-boxes overfull-boxes
-            mt-best-overfull-boxes overfull-boxes
-            mt-init-underfull-boxes underfull-boxes
+      (setq mt-best-overfull-boxes overfull-boxes
             mt-best-underfull-boxes underfull-boxes
             mt-best-file current-count))
     (setq mt-receive-count (+ mt-receive-count 1))
