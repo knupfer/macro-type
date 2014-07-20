@@ -264,7 +264,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (number-to-string local-count) ".header.tex"
            " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
            (number-to-string local-count) ".tex;")
-   (concat "pdflatex"
+   (concat "latex"
            " -output-directory /tmp"
            " -draftmode"
            " -interaction nonstopmode /tmp/tmp.macro-type."
@@ -307,18 +307,18 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     ;; Do this for every section.
     (while (< section-count (length used-calculation-vector))
       (let* ((local-best-file (elt initial-vector section-count))
-             (overfull-slice (map 'list (lambda (x) (elt x section-count)) overfull-matrix))
-             (underfull-slice (map 'list (lambda (x) (elt x section-count)) underfull-matrix))
+             (overfull-slice (map 'list (lambda (x) (elt x section-count))
+                                  overfull-matrix))
+             (underfull-slice (map 'list (lambda (x) (elt x section-count))
+                                   underfull-matrix))
              (combined-list (map 'list (lambda (x) (+ (* 100 x)
                                                       (pop underfull-slice)))
                                  overfull-slice)))
         ;; Calculate only when there is badness.
-        (when (mt-is-there-badness-p combined-list
-                                     local-best-file)
+        (when (mt-is-there-badness-p combined-list local-best-file)
           ;; Look at all alternative pagesizes.
           (aset used-calculation-vector section-count
-                (mt-nearest-good-file-number local-best-file
-                                             combined-list))))
+                (mt-nearest-good-file-number local-best-file combined-list))))
       (setq section-count (+ 1 section-count)))
     (if (<= number-of-blurs 0)
         (append used-calculation-vector nil)
