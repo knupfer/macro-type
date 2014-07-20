@@ -82,67 +82,36 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 
 (defun mt-pdflatex-IO (range file forks calcs local-count section-list)
   "Starts multiple emacsen to work asynchronosly."
-  (async-start
-   `(lambda ()
-      ;; Inject variables into new emacsen.
-      ;;      'mt-string
-      (let* ((local-count ,local-count)
-             (size (+ (* -0.5 ,range)
-                      (* (- local-count 2)
-                         (/ ,range 1.0 (max 1 (- ,calcs 2)))))))
-        ;; Save different page sizes, using echo is for speed
-        (shell-command
-         (concat "echo \"\\usepackage{mdframed}"
-                 (when (and (> local-count 1)
-                            (or (>= size 0.0001)
-                                (<= size -0.0001)))
-                   (concat
-                    "\\addtolength"
-                    "{\\oddsidemargin}{" (number-to-string size) "mm}"
-                    "\\addtolength"
-                    "{\\evensidemargin}{" (number-to-string size) "mm}"
-                    "\\addtolength"
-                    "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
-                 "\n\\begin{document} \" > "
-                 (concat "/tmp/tmp.macro-type."
-                         (number-to-string local-count) ".header.tex")))
-        ;; Concatenate parts of the file and compile it.
-        ;; Doing this in emacs buffers is very slow.
-        (shell-command
-         (concat "cat"
-                 " /tmp/tmp.macro-type.begin"
-                 " /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".header.tex"
-                 " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex;"
-                 "pdflatex"
-                 " -output-directory /tmp"
-                 " -draftmode"
-                 " -interaction nonstopmode /tmp/tmp.macro-type."
-                 (number-to-string local-count) ".tex"
-                 " > /dev/null"))))
-   ;; Analyze the result of the async process.
-   `(lambda (x)
-      (when (mt-evaluate-result ,local-count ,file ,forks ',section-list
-                                (with-temp-buffer
-                                  (insert-file-contents
-                                   (concat "/tmp/tmp.macro-type."
-                                           (number-to-string ,local-count)
-                                           ".log"))
-                                  (buffer-string)))
-        (shell-command (concat "rm /tmp/tmp.macro-type."
-                               (number-to-string ,local-count) ".*")))
-      (when (boundp 'mt-init-overfull-boxes)
-        (message (mt-minibuffer-message mt-init-overfull-boxes
-                                        mt-best-overfull-boxes
-                                        mt-init-underfull-boxes
-                                        mt-best-underfull-boxes
-                                        mt-receive-count ,calcs 'file)))
-      (when (>= mt-receive-count ,calcs)
-        (mt-final-calculation-IO ,calcs ,file ',section-list ,range))
-      (when (<= (+ ,local-count ,forks) ,calcs)
-        (mt-pdflatex-IO ,range ,file ,forks ,calcs
-                        (+ ,local-count ,forks) ',section-list)))))
+  (let ((script (mt-async-shell-script (+ (* -0.5 range)
+                                          (* (- local-count 2)
+                                             (/ range 1.0
+                                                (max 1 (- calcs 2)))))
+                                       local-count)))
+    (async-start
+     `(lambda ()
+        (shell-command ,script))
+     ;; Analyze the result of the async process.
+     `(lambda (x)
+        (when (mt-evaluate-result ,local-count ,file ,forks ',section-list
+                                  (with-temp-buffer
+                                    (insert-file-contents
+                                     (concat "/tmp/tmp.macro-type."
+                                             (number-to-string ,local-count)
+                                             ".log"))
+                                    (buffer-string)))
+          (shell-command (concat "rm /tmp/tmp.macro-type."
+                                 (number-to-string ,local-count) ".*")))
+        (when (boundp 'mt-init-overfull-boxes)
+          (message (mt-minibuffer-message mt-init-overfull-boxes
+                                          mt-best-overfull-boxes
+                                          mt-init-underfull-boxes
+                                          mt-best-underfull-boxes
+                                          mt-receive-count ,calcs 'file)))
+        (when (>= mt-receive-count ,calcs)
+          (mt-final-calculation-IO ,calcs ,file ',section-list ,range))
+        (when (<= (+ ,local-count ,forks) ,calcs)
+          (mt-pdflatex-IO ,range ,file ,forks ,calcs
+                          (+ ,local-count ,forks) ',section-list))))))
 
 (defun mt-final-calculation-IO (calcs file section-list range)
   (let ((local-vector (mt-inject-mdframes calcs mt-best-file
@@ -271,6 +240,36 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
             mt-best-file current-count))
     (setq mt-receive-count (+ mt-receive-count 1))
     to-delete))
+
+(defun mt-async-shell-script (size local-count)
+  (concat
+   (concat "echo"
+           " \"\\usepackage{mdframed}"
+           (when (and (> local-count 1)
+                      (or (>= size 0.0001)
+                          (<= size -0.0001)))
+             (concat
+              "\\addtolength"
+              "{\\oddsidemargin}{" (number-to-string size) "mm}"
+              "\\addtolength"
+              "{\\evensidemargin}{" (number-to-string size) "mm}"
+              "\\addtolength"
+              "{\\textwidth}{" (number-to-string (* -2 size)) "mm}"))
+           "\n\\begin{document} \" > "
+           "/tmp/tmp.macro-type."
+           (number-to-string local-count) ".header.tex;")
+   (concat "cat"
+           " /tmp/tmp.macro-type.begin"
+           " /tmp/tmp.macro-type."
+           (number-to-string local-count) ".header.tex"
+           " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
+           (number-to-string local-count) ".tex;")
+   (concat "pdflatex"
+           " -output-directory /tmp"
+           " -draftmode"
+           " -interaction nonstopmode /tmp/tmp.macro-type."
+           (number-to-string local-count) ".tex"
+           " > /dev/null")))
 
 (defun mt-plot-log-file-script (file sections calcs)
   (concat "R -e \"data = read.table('"
