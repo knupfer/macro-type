@@ -368,7 +368,9 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                 (mt-nearest-good-file-number local-best-file combined-list))))
       (setq section-count (+ 1 section-count)))
     (if (<= number-of-blurs 0)
-        (append used-calculation-vector nil)
+        (progn
+          (aset used-calculation-vector 0 best-file)
+          (append used-calculation-vector nil))
       (mt-inject-mdframes calcs best-file overfull-matrix
                           underfull-matrix (- number-of-blurs 1)
                           (mt-blur-mdframe used-calculation-vector
