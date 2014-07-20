@@ -318,8 +318,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                 (mt-nearest-good-file-number local-best-file
                                              underfull-slice
                                              overfull-slice
-                                             local-best-file
-                                             0))))
+                                             local-best-file))))
       (setq section-count (+ 1 section-count)))
     (if (<= number-of-blurs 0)
         (append used-calculation-vector nil)
@@ -352,38 +351,36 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 
 (defun mt-nearest-good-file-number (best-file-number underfull-matrix
                                                      overfull-matrix
-                                                     local-file-number
-                                                     local-file-count)
-  (let ((calcs (length underfull-matrix)))
-    (when (and (<= (+ local-file-count best-file-number) calcs)
-               (< (+ (* 100 (elt overfull-matrix
-                                 (+ local-file-count
-                                    (- best-file-number 1))))
-                     (elt underfull-matrix
-                          (+ local-file-count
-                             (- best-file-number 1))))
-                  (+ (* 100 (elt overfull-matrix
-                                 (- local-file-number 1)))
-                     (elt underfull-matrix
-                          (- local-file-number 1)))))
-      (setq local-file-number (+ local-file-count best-file-number)))
-    (when (and (> (- best-file-number local-file-count) 0)
-               (< (+ (* 100 (elt overfull-matrix
-                                 (- (- best-file-number 1)
-                                    local-file-count)))
-                     (elt underfull-matrix
-                          (- (- best-file-number 1)
-                             local-file-count)))
-                  (+ (* 100 (elt overfull-matrix
-                                 (- local-file-number 1)))
-                     (elt underfull-matrix
-                          (- local-file-number 1)))))
-      (setq local-file-number (- best-file-number local-file-count)))
-    (if (>= local-file-count calcs)
-        local-file-number
-      (mt-nearest-good-file-number best-file-number underfull-matrix
-                                   overfull-matrix
-                                   local-file-number (+ 1 local-file-count)))))
+                                                     local-file-number)
+  (let ((calcs (length underfull-matrix))
+        (local-file-count 0))
+    (while (<= local-file-count calcs)
+      (when (and (<= (+ local-file-count best-file-number) calcs)
+                 (< (+ (* 100 (elt overfull-matrix
+                                   (+ local-file-count
+                                      (- best-file-number 1))))
+                       (elt underfull-matrix
+                            (+ local-file-count
+                               (- best-file-number 1))))
+                    (+ (* 100 (elt overfull-matrix
+                                   (- local-file-number 1)))
+                       (elt underfull-matrix
+                            (- local-file-number 1)))))
+        (setq local-file-number (+ local-file-count best-file-number)))
+      (when (and (> (- best-file-number local-file-count) 0)
+                 (< (+ (* 100 (elt overfull-matrix
+                                   (- (- best-file-number 1)
+                                      local-file-count)))
+                       (elt underfull-matrix
+                            (- (- best-file-number 1)
+                               local-file-count)))
+                    (+ (* 100 (elt overfull-matrix
+                                   (- local-file-number 1)))
+                       (elt underfull-matrix
+                            (- local-file-number 1)))))
+        (setq local-file-number (- best-file-number local-file-count)))
+      (setq local-file-count (+ 1 local-file-count)))
+    local-file-number))
 
 (defun mt-is-there-badness-p (overfull-matrix
                               underfull-matrix
