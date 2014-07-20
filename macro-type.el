@@ -31,6 +31,8 @@
 (defvar mt-best-overfull-boxes)
 (defvar mt-benchmark)
 (defvar mt-number-of-blurs 4)
+(defvar mt-no-overfull)
+(defvar mt-no-underfull)
 
 (defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
@@ -48,6 +50,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
   (if (car (file-attributes file 0))
       (error "You can't choose a directory")
     (setq mt-receive-count 0
+          mt-no-overfull t
+          mt-no-underfull t
           mt-benchmark (current-time)
           ;; Get line numbers of sections, including begin and end document.
           mt-underfull-matrix (make-vector calcs 0)
@@ -137,10 +141,12 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            " -interaction nonstopmode "
            (car (split-string file "\.tex$")) ".macro-type.tex"
            " > /dev/null"))
-  (mt-dump-log-file-IO file)
+  (mt-dump-log-file-IO file mt-no-underfull mt-no-overfull)
   (shell-command (mt-plot-log-file-script file
                                           (length (elt mt-overfull-matrix 0))
-                                          (length mt-overfull-matrix)))
+                                          (length mt-overfull-matrix)
+                                          mt-no-underfull
+                                          mt-no-overfull))
   ;; Recalculate badness after mdframe injection.
   (with-temp-buffer
     (insert-file-contents (concat
@@ -169,16 +175,46 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
       file
       t))))
 
-(defun mt-dump-log-file-IO (file)
+(defun mt-dump-log-file-IO (file no-underfull no-overfull)
   (with-temp-buffer
-    (insert (replace-regexp-in-string
-             "\\[\\|]" ""
-             (format "%s" mt-overfull-matrix)))
-    (newline)
-    (insert (replace-regexp-in-string
-             "\\[\\|]" ""
-             (format "%s" mt-underfull-matrix)))
-    (newline)
+    (when (not no-overfull)
+      (let ((local-max 0))
+        (mapc
+         (lambda (x) (mapc
+                      (lambda (y) (setq local-max (max local-max y)))
+                      x))
+         mt-overfull-matrix)
+        (insert (replace-regexp-in-string
+                 "\\[\\|]" ""
+                 (format "%s"
+                         (map 'vector
+                              (lambda (x)
+                                (map 'vector
+                                     (lambda (y)
+                                       (truncate (* 1000
+                                                    (sqrt (/ y local-max)))))
+                                     x))
+                              mt-overfull-matrix)))))
+      (newline))
+    (when (not no-underfull)
+      (let ((local-max 0))
+        (mapc
+         (lambda (x) (mapc
+                      (lambda (y) (setq local-max (max local-max y)))
+                      x))
+         mt-underfull-matrix)
+        (insert (replace-regexp-in-string
+                 "\\[\\|]" ""
+                 (format "%s"
+                         (map 'vector
+                              (lambda (x)
+                                (map 'vector
+                                     (lambda (y)
+                                       (truncate (* 1000
+                                                    (sqrt (/ y local-max)))))
+                                     x))
+                              mt-underfull-matrix)))))
+      (newline))
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
 
@@ -224,6 +260,10 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                  result
                  section-list
                  "^Overfull \\\\hbox (\\([0-9\.]+\\)pt too wide).*lines \\([0-9]+\\)")))
+    (when (and mt-no-underfull (> underfull-boxes 0))
+      (setq mt-no-underfull nil))
+    (when (and mt-no-overfull (> overfull-boxes 0))
+      (setq mt-no-overfull nil))
     ;; Remember the best page size.
     (if (> current-count 1)
         (if (> (+ (* 100 mt-best-overfull-boxes) mt-best-underfull-boxes)
@@ -271,12 +311,17 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (number-to-string local-count) ".tex"
            " > /dev/null")))
 
-(defun mt-plot-log-file-script (file sections calcs)
-  (concat "R -e \"data = read.table('"
+(defun mt-plot-log-file-script (file sections calcs no-underfull no-overfull)
+  (concat "R -e \"mydata = read.table('"
           (car (split-string file "\.tex$")) ".macro-type.plot.log"
-          "', sep=' ', colClasses='numeric', dec='.') ;"
-          "over = sqrt(data[1,]/max(c(0.01,max(data[1,])[1])));"
-          "under = sqrt(data[2,]/max(c(0.01,max(data[2,])[1])));"
+          "', sep=' ') ;"
+          (if no-overfull (concat "over = 0;"
+                                  "under = mydata[1,]/1000;")
+            (if no-underfull (concat "over = mydata[1,]/1000;"
+                                     "under = 0;")
+              (concat "over = mydata[1,]/1000;"
+                      "under = mydata[2,]/1000;")))
+          "rm(mydata);"
           "library(ggplot2);"
           "library(grid);"
           "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),"
@@ -324,7 +369,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (append used-calculation-vector nil)
       (mt-inject-mdframes calcs best-file overfull-matrix
                           underfull-matrix (- number-of-blurs 1)
-                          (mt-blur-mdframe used-calculation-vector best-file)))))
+                          (mt-blur-mdframe used-calculation-vector
+                                           best-file)))))
 
 (defun mt-sum-errors-in-sections (input section-list error-search-string)
   (let ((error-vector (make-vector (- (length section-list) 1) 0)))
