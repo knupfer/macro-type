@@ -307,7 +307,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            (number-to-string local-count) ".header.tex"
            " /tmp/tmp.macro-type.end > /tmp/tmp.macro-type."
            (number-to-string local-count) ".tex;")
-   (concat "latex"
+   (concat "pdflatex"
            " -output-directory /tmp"
            " -draftmode"
            " -interaction nonstopmode /tmp/tmp.macro-type."
