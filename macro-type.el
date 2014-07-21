@@ -36,6 +36,7 @@
 (defvar do-section t)
 (defvar do-paragraph t)
 (defvar do-graph t)
+(defvar mt-max-plot-size 200)
 
 (defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
@@ -199,12 +200,56 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 (defun mt-dump-log-file-IO (file no-underfull no-overfull)
   (with-temp-buffer
     (when (not no-overfull)
-      (let ((local-max 0))
+      (let* ((local-max 0)
+             (local-overfull mt-overfull-matrix)
+             (local-count 1)
+             (acc-list (make-list (length (elt local-overfull 0)) 0))
+             (result-count 0)
+             (acc-count 0)
+             (result-matrix (make-vector mt-max-plot-size 0)))
+        (when (> (length local-overfull) mt-max-plot-size)
+          (mapc (lambda (x)
+                  (setq local-count (+ 1 local-count))
+                  (setq acc-list (map 'list (lambda (y) (+ y (pop acc-list))) x))
+                  (when (>= local-count (/ (* 1.0 (length local-overfull)) mt-max-plot-size))
+                    (progn
+                      (setq local-count (- local-count (/ (* 1.0 (length local-overfull)) mt-max-plot-size)))
+                      (aset result-matrix result-count acc-list)
+                      (setq acc-list (make-list (length (elt local-overfull 0))))
+                      (setq result-count (+ 1 result-count)))))
+                local-overfull)
+          (setq local-overfull result-matrix))
+
+        (when (> (length (elt local-overfull 0)) mt-max-plot-size)
+          (setq local-count 1)
+          (setq acc-list nil)
+          (setq result-count 0)
+          (setq result-matrix (make-vector (length local-overfull) 0))
+          (mapc (lambda (x)
+                  (mapc (lambda (y)
+                          (setq local-count (+ 1 local-count))
+                          (setq acc-count (+ acc-count y))
+                          (when (>= local-count (/ (* 1.0 (length x)) mt-max-plot-size))
+                            (progn
+                              (setq local-count (- local-count (/ (* 1.0 (length x)) mt-max-plot-size)))
+                              (setq acc-list (append acc-list (list acc-count)))
+                              (setq acc-count 0))))
+                        x)
+                  (aset result-matrix result-count acc-list)
+                  (setq result-count (+ 1 result-count))
+                  (setq acc-list nil)
+                  (setq local-count 1)
+                  (setq acc-count 0))
+                local-overfull)
+          (setq local-overfull result-matrix))
+
+        (setq mt-mydebug local-overfull)
+
         (mapc
          (lambda (x) (mapc
                       (lambda (y) (setq local-max (max local-max y)))
                       x))
-         mt-overfull-matrix)
+         local-overfull)
         (insert (replace-regexp-in-string
                  "\\[\\|]" ""
                  (format "%s"
@@ -215,15 +260,60 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                        (truncate (* 1000
                                                     (sqrt (/ (* 1.0 y) local-max)))))
                                      x))
-                              mt-overfull-matrix)))))
+                              local-overfull)))))
       (newline))
+    
     (when (not no-underfull)
-      (let ((local-max 0))
+      (let* ((local-max 0)
+             (local-underfull mt-underfull-matrix)
+             (local-count 1)
+             (acc-list (make-list (length (elt local-underfull 0)) 0))
+             (result-count 0)
+             (acc-count 0)
+             (result-matrix (make-vector mt-max-plot-size 0)))
+        (when (> (length local-underfull) mt-max-plot-size)
+          (mapc (lambda (x)
+                  (setq local-count (+ 1 local-count))
+                  (setq acc-list (map 'list (lambda (y) (+ y (pop acc-list))) x))
+                  (when (>= local-count (/ (* 1.0 (length local-underfull)) mt-max-plot-size))
+                    (progn
+                      (setq local-count (- local-count (/ (* 1.0 (length local-underfull)) mt-max-plot-size)))
+                      (aset result-matrix result-count acc-list)
+                      (setq acc-list (make-list (length (elt local-underfull 0))))
+                      (setq result-count (+ 1 result-count)))))
+                local-underfull)
+          (setq local-underfull result-matrix))
+
+        (when (> (length (elt local-underfull 0)) mt-max-plot-size)
+          (setq local-count 1)
+          (setq acc-list nil)
+          (setq result-count 0)
+          (setq result-matrix (make-vector (length local-underfull) 0))
+          (mapc (lambda (x)
+                  (mapc (lambda (y)
+                          (setq local-count (+ 1 local-count))
+                          (setq acc-count (+ acc-count y))
+                          (when (>= local-count (/ (* 1.0 (length x)) mt-max-plot-size))
+                            (progn
+                              (setq local-count (- local-count (/ (* 1.0 (length x)) mt-max-plot-size)))
+                              (setq acc-list (append acc-list (list acc-count)))
+                              (setq acc-count 0))))
+                        x)
+                  (aset result-matrix result-count acc-list)
+                  (setq result-count (+ 1 result-count))
+                  (setq acc-list nil)
+                  (setq local-count 1)
+                  (setq acc-count 0))
+                local-underfull)
+          (setq local-underfull result-matrix))
+
+        (setq mt-mydebug2 local-underfull)
+
         (mapc
          (lambda (x) (mapc
                       (lambda (y) (setq local-max (max local-max y)))
                       x))
-         mt-underfull-matrix)
+         local-underfull)
         (insert (replace-regexp-in-string
                  "\\[\\|]" ""
                  (format "%s"
@@ -234,7 +324,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                        (truncate (* 1000
                                                     (sqrt (/ (* 1.0 y) local-max)))))
                                      x))
-                              mt-underfull-matrix)))))
+                              local-underfull)))))
       (newline))
     (write-file (concat (car (split-string file "\.tex$"))
                         ".macro-type.plot.log"))))
@@ -345,8 +435,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           "library(grid);"
           "df = data.frame(col=rgb(0.9*(1 - over), 0.9*(1 - under),"
           "0.9*(1.0 - 0.5*(over**2 + under**2))), expand.grid"
-          "(x=1:" (number-to-string sections)
-          ", y=1:" (number-to-string calcs) "));"
+          "(x=1:" (number-to-string (min sections mt-max-plot-size))
+          ", y=1:" (number-to-string (min calcs mt-max-plot-size)) "));"
           "pdf('" (car (split-string file "\.tex$"))
           ".macro-type.plot.pdf" "') ;"
           "ggplot(df, aes(x=x, y=y))"
