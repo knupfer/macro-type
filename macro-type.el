@@ -194,7 +194,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                 (map 'vector
                                      (lambda (y)
                                        (truncate (* 1000
-                                                    (sqrt (/ y local-max)))))
+                                                    (sqrt (/ (* 1.0 y) local-max)))))
                                      x))
                               mt-overfull-matrix)))))
       (newline))
@@ -226,18 +226,15 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (margin-change (pop margin-list)))
     (when (not (= margin-change 0))
       (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                             " s/\\(.*\\)/\\1 \\\\begin{mdframed}"
-                             "[hidealllines=true,"
-                             "innertopmargin=2.1pt,skipabove=0mm,"
-                             "innerleftmargin="
-                             (number-to-string margin-change) "mm,"
-                             "innerrightmargin="
-                             (number-to-string margin-change) "mm]"
+                             " s/\\(.*\\)/\\1 \\\\begin{adjustwidth}{"
+                             (number-to-string margin-change) "mm}"
+                             "{"
+                             (number-to-string margin-change) "mm}"
                              "/' /tmp/tmp.macro-type."
                              (number-to-string file-number) ".tex"))
       (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                             " s/\\(.*\\)/\\\\end{mdframed} \\1/' "
-                             "/tmp/tmp.macro-type."
+                             " s/\\(.*\\)/\\\\end{adjustwidth}"
+                             "\\1/' /tmp/tmp.macro-type."
                              (number-to-string file-number) ".tex"))))
   (when margin-list
     (mt-write-injection-IO file-number section-list margin-list)))
@@ -287,7 +284,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
 (defun mt-async-shell-script (size local-count)
   (concat
    (concat "echo"
-           " \"\\usepackage{mdframed}"
+           " \"\\usepackage{changepage}"
            (when (and (> local-count 1)
                       (or (>= size 0.0001)
                           (<= size -0.0001)))
