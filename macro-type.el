@@ -126,12 +126,13 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                           (make-vector
                                            (- (length section-list) 1)
                                            mt-best-file))))
-    (mt-write-injection-IO mt-best-file section-list
-                           (map 'list
-                                (lambda (x)
-                                  (mt-calculate-margin-change range calcs x
-                                                              mt-best-file))
-                                local-vector)))
+    (mt-write-injection-IO mt-best-file (cdr section-list)
+                           (cdr
+                            (map 'list
+                                 (lambda (x)
+                                   (mt-calculate-margin-change range calcs x
+                                                               mt-best-file))
+                                 local-vector))))
   (shell-command
    (concat "cp /tmp/tmp.macro-type."
            (number-to-string mt-best-file) ".tex "
@@ -368,9 +369,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                 (mt-nearest-good-file-number local-best-file combined-list))))
       (setq section-count (+ 1 section-count)))
     (if (<= number-of-blurs 0)
-        (progn
-          (aset used-calculation-vector 0 best-file)
-          (append used-calculation-vector nil))
+        (append used-calculation-vector nil)
       (mt-inject-mdframes calcs best-file overfull-matrix
                           underfull-matrix (- number-of-blurs 1)
                           (mt-blur-mdframe used-calculation-vector
