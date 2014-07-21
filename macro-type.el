@@ -33,6 +33,9 @@
 (defvar mt-number-of-blurs 4)
 (defvar mt-no-overfull)
 (defvar mt-no-underfull)
+(defvar do-section t)
+(defvar do-paragraph t)
+(defvar do-graph t)
 
 (defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
@@ -60,6 +63,8 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     ;; Save the header and the body of the tex file to access them faster
     (let ((local-count 1)
           (section-list (mt-retrieve-file-info-IO file)))
+      (when do-paragraph
+        (setq section-list (mt-find-paragraphs-IO file section-list)))
       (while (and (<= local-count forks)
                   (<= local-count calcs))
         (mt-pdflatex-IO range file forks calcs local-count section-list)
@@ -80,10 +85,22 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (shell-command-on-region
      (point-min) (point-max)
      (concat
-      "grep -n 'section{.*}\\|begin{document}\\|end{document}' "
+      "grep -n 'section\\**{.*}\\|begin{document}\\|end{document}' "
       file " | grep -o ^[0-9]*")
      t t)
     (map 'list 'string-to-number (split-string (buffer-string)))))
+
+(defun mt-find-paragraphs-IO (file section-list)
+  (let ((paragraph-list nil))
+    (with-temp-buffer
+      (let ((counts 0))
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (while (re-search-forward "^[^\\\\\n]+\\(\n[ \n]*$\\)" nil t)
+          (setq paragraph-list (append paragraph-list (list (line-number-at-pos (match-end 0))))))))
+    (while (<= (car paragraph-list) (nth 0 section-list))
+      (pop paragraph-list))
+    paragraph-list))
 
 (defun mt-pdflatex-IO (range file forks calcs local-count section-list)
   "Starts multiple emacsen to work asynchronosly."
@@ -119,20 +136,21 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                           (+ ,local-count ,forks) ',section-list))))))
 
 (defun mt-final-calculation-IO (calcs file section-list range)
-  (let ((local-vector (mt-inject-mdframes calcs mt-best-file
-                                          mt-overfull-matrix
-                                          mt-underfull-matrix
-                                          mt-number-of-blurs
-                                          (make-vector
-                                           (- (length section-list) 1)
-                                           mt-best-file))))
-    (mt-write-injection-IO mt-best-file (cdr section-list)
-                           (cdr
-                            (map 'list
-                                 (lambda (x)
-                                   (mt-calculate-margin-change range calcs x
-                                                               mt-best-file))
-                                 local-vector))))
+  (when do-section
+    (let ((local-vector (mt-inject-mdframes calcs mt-best-file
+                                            mt-overfull-matrix
+                                            mt-underfull-matrix
+                                            mt-number-of-blurs
+                                            (make-vector
+                                             (- (length section-list) 1)
+                                             mt-best-file))))
+      (mt-write-injection-IO mt-best-file (cdr section-list)
+                             (cdr
+                              (map 'list
+                                   (lambda (x)
+                                     (mt-calculate-margin-change range calcs x
+                                                                 mt-best-file))
+                                   local-vector)))))
   (shell-command
    (concat "cp /tmp/tmp.macro-type."
            (number-to-string mt-best-file) ".tex "
@@ -143,12 +161,13 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
            " -interaction nonstopmode "
            (car (split-string file "\.tex$")) ".macro-type.tex"
            " > /dev/null"))
-  (mt-dump-log-file-IO file mt-no-underfull mt-no-overfull)
-  (shell-command (mt-plot-log-file-script file
-                                          (length (elt mt-overfull-matrix 0))
-                                          (length mt-overfull-matrix)
-                                          mt-no-underfull
-                                          mt-no-overfull))
+  (when do-graph
+    (mt-dump-log-file-IO file mt-no-underfull mt-no-overfull)
+    (shell-command (mt-plot-log-file-script file
+                                            (length (elt mt-overfull-matrix 0))
+                                            (length mt-overfull-matrix)
+                                            mt-no-underfull
+                                            mt-no-overfull)))
   ;; Recalculate badness after mdframe injection.
   (with-temp-buffer
     (insert-file-contents (concat
@@ -213,7 +232,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                                 (map 'vector
                                      (lambda (y)
                                        (truncate (* 1000
-                                                    (sqrt (/ y local-max)))))
+                                                    (sqrt (/ (* 1.0 y) local-max)))))
                                      x))
                               mt-underfull-matrix)))))
       (newline))
