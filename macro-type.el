@@ -36,7 +36,7 @@
 (defvar do-section t)
 (defvar do-paragraph t)
 (defvar do-graph t)
-(defvar mt-max-plot-size 200)
+(defvar mt-max-plot-size 100)
 
 (defun mt-macro-type-tex-file (file range calcs forks)
   "Change the pagesize of a tex file to optimize it.
@@ -211,11 +211,14 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           (mapc (lambda (x)
                   (setq local-count (+ 1 local-count))
                   (setq acc-list (map 'list (lambda (y) (+ y (pop acc-list))) x))
+                  (setq acc-count (+ 1 acc-count))
                   (when (>= local-count (/ (* 1.0 (length local-overfull)) mt-max-plot-size))
                     (progn
                       (setq local-count (- local-count (/ (* 1.0 (length local-overfull)) mt-max-plot-size)))
-                      (aset result-matrix result-count acc-list)
-                      (setq acc-list (make-list (length (elt local-overfull 0))))
+                      (aset result-matrix result-count (map 'list (lambda (z) (/ z acc-count))
+                                                            acc-list))
+                      (setq acc-list (make-list (length (elt local-overfull 0)) 0))
+                      (setq acc-count 0)
                       (setq result-count (+ 1 result-count)))))
                 local-overfull)
           (setq local-overfull result-matrix))
@@ -224,15 +227,19 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           (setq local-count 1)
           (setq acc-list nil)
           (setq result-count 0)
+          (setq acc-count 0)
+          (setq div-count 0)
           (setq result-matrix (make-vector (length local-overfull) 0))
           (mapc (lambda (x)
                   (mapc (lambda (y)
                           (setq local-count (+ 1 local-count))
                           (setq acc-count (+ acc-count y))
+                          (setq div-count (+ 1 div-count))
                           (when (>= local-count (/ (* 1.0 (length x)) mt-max-plot-size))
                             (progn
                               (setq local-count (- local-count (/ (* 1.0 (length x)) mt-max-plot-size)))
-                              (setq acc-list (append acc-list (list acc-count)))
+                              (setq acc-list (append acc-list (list (/ acc-count div-count))))
+                              (setq div-count 0)
                               (setq acc-count 0))))
                         x)
                   (aset result-matrix result-count acc-list)
@@ -242,8 +249,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                   (setq acc-count 0))
                 local-overfull)
           (setq local-overfull result-matrix))
-
-        (setq mt-mydebug local-overfull)
 
         (mapc
          (lambda (x) (mapc
@@ -275,11 +280,14 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           (mapc (lambda (x)
                   (setq local-count (+ 1 local-count))
                   (setq acc-list (map 'list (lambda (y) (+ y (pop acc-list))) x))
+                  (setq acc-count (+ 1 acc-count))
                   (when (>= local-count (/ (* 1.0 (length local-underfull)) mt-max-plot-size))
                     (progn
                       (setq local-count (- local-count (/ (* 1.0 (length local-underfull)) mt-max-plot-size)))
-                      (aset result-matrix result-count acc-list)
-                      (setq acc-list (make-list (length (elt local-underfull 0))))
+                      (aset result-matrix result-count (map 'list (lambda (z) (/ z acc-count))
+                                                            acc-list))
+                      (setq acc-list (make-list (length (elt local-underfull 0)) 0))
+                      (setq acc-count 0)
                       (setq result-count (+ 1 result-count)))))
                 local-underfull)
           (setq local-underfull result-matrix))
@@ -287,16 +295,20 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (when (> (length (elt local-underfull 0)) mt-max-plot-size)
           (setq local-count 1)
           (setq acc-list nil)
+          (setq acc-count 0)
           (setq result-count 0)
+          (setq div-count 0)
           (setq result-matrix (make-vector (length local-underfull) 0))
           (mapc (lambda (x)
                   (mapc (lambda (y)
                           (setq local-count (+ 1 local-count))
                           (setq acc-count (+ acc-count y))
+                          (setq div-count (+ 1 div-count))
                           (when (>= local-count (/ (* 1.0 (length x)) mt-max-plot-size))
                             (progn
                               (setq local-count (- local-count (/ (* 1.0 (length x)) mt-max-plot-size)))
-                              (setq acc-list (append acc-list (list acc-count)))
+                              (setq acc-list (append acc-list (list (/ acc-count div-count))))
+                              (setq div-count 0)
                               (setq acc-count 0))))
                         x)
                   (aset result-matrix result-count acc-list)
@@ -307,7 +319,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                 local-underfull)
           (setq local-underfull result-matrix))
 
-        (setq mt-mydebug2 local-underfull)
+
 
         (mapc
          (lambda (x) (mapc
