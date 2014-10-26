@@ -516,9 +516,10 @@ parallelize the calculation."
                       (<= (nth local-count section-list)
                           (string-to-number (match-string 2))))
             (setq local-count (+ local-count 1)))
-          (aset error-vector (- local-count 1)
-                (+ (string-to-number (match-string 1))
-                   (elt error-vector (- local-count 1)))))))
+	  (when (> local-count 0)
+	    (aset error-vector (- local-count 1)
+		  (+ (string-to-number (match-string 1))
+		     (elt error-vector (- local-count 1))))))))
     error-vector))
 
 (defun mt-file-check (file)
