@@ -347,14 +347,13 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (margin-change (pop margin-list)))
     (when (not (= margin-change 0))
       (shell-command (concat "sed -i '" (number-to-string this-section-line)
-                             " s/\\(.*\\)/\\1 \\\\begin{adjustwidth}{"
-                             (number-to-string margin-change) "mm}"
-                             "{"
-                             (number-to-string margin-change) "mm}"
+			     " s/\\(.*\\)/\\1 \\\\begingroup\\\\leftskip"
+                             (number-to-string (/ margin-change 2)) "mm"
+                             "\\\\rightskip\\\\leftskip"
                              "/' /tmp/tmp.macro-type."
                              (number-to-string file-number) ".tex"))
       (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                             " s/\\(.*\\)/\\\\end{adjustwidth}"
+                             " s/\\(.*\\)/\\\\endgroup"
                              "\\1/' /tmp/tmp.macro-type."
                              (number-to-string file-number) ".tex"))))
   (when margin-list
