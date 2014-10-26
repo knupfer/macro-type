@@ -567,7 +567,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
              (number-to-string
               (round
                (/ (* 100 (- init-overfull best-overfull))
-                  init-overfull))) "%% from "
+                  (max init-overfull 1)))) "%% from "
                   (number-to-string (round init-overfull)) "pt to "
                   (number-to-string (round best-overfull)) "pt"))
    "  ||  "
@@ -577,7 +577,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
              (number-to-string
               (round
                (/ (* 100 (- init-underfull best-underfull))
-                  init-underfull))) "%% from "
+		  (max init-underfull 1)))) "%% from "
                   (number-to-string (round init-underfull)) " to "
                   (number-to-string (round best-underfull))))
    "  ||  "
