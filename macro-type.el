@@ -18,6 +18,20 @@
 
 ;; Author: Florian Knupfer
 
+;;; Commentary:
+
+;; This library is used to enhance the quality of LaTeX output.  It
+;; parses the log file and manipulates afterwards the margins by a
+;; small amount and compares whether the output is with less over- and
+;; underfull hboxes.  The standard manipulates the margins on three
+;; levels: on document, section and paragraph level.  This can
+;; changed, especially the paragraph level is *very* resource
+;; intensive on big documents.  Furthermore it's possible to chose on
+;; execution the amount of manipulation which is allowed and number of
+;; times which are used to find a better solution.  Additonaly it puts
+;; out a graph, for this case an installation of GNU R is necessary,
+;; but the plot can be omitted.
+
 ;;; Code:
 (require 'async)
 
@@ -38,11 +52,12 @@
 (defvar do-graph t)
 (defvar mt-max-plot-size 100)
 
-(defun mt-macro-type-tex-file (file range calcs forks)
+(defun mt-macro-type-tex-file (file range times forks)
   "Change the pagesize of a tex file to optimize it.
-It compiles a lot of times the same file and looks at the log files to
-minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
- alter the pagesize of individual sections."
+It compiles TIMES the same FILE and looks at the log files to
+minimize overfull and underfull hboxes by changing the margins by
+different lengths in RANGE.  It uses a number of FORKS to
+parallelize the calculation."
   (interactive (list (read-file-name
                       "Choose a .tex file: " nil nil t nil 'mt-file-check)
                      (read-number
@@ -59,16 +74,16 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
           mt-best-overfull-boxes nil
           mt-benchmark (current-time)
           ;; Get line numbers of sections, including begin and end document.
-          mt-underfull-matrix (make-vector calcs 0)
-          mt-overfull-matrix (make-vector calcs 0))
+          mt-underfull-matrix (make-vector times 0)
+          mt-overfull-matrix (make-vector times 0))
     ;; Save the header and the body of the tex file to access them faster
     (let ((local-count 1)
           (section-list (mt-retrieve-file-info-IO file)))
       (when do-paragraph
         (setq section-list (mt-find-paragraphs-IO file)))
       (while (and (<= local-count forks)
-                  (<= local-count calcs))
-        (mt-pdflatex-IO range file forks calcs local-count section-list)
+                  (<= local-count times))
+        (mt-pdflatex-IO range file forks times local-count section-list)
         (setq local-count (+ 1 local-count))))))
 
 (defun mt-retrieve-file-info-IO (file)
