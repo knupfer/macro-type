@@ -65,7 +65,7 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
     (let ((local-count 1)
           (section-list (mt-retrieve-file-info-IO file)))
       (when do-paragraph
-        (setq section-list (mt-find-paragraphs-IO file section-list)))
+        (setq section-list (mt-find-paragraphs-IO file)))
       (while (and (<= local-count forks)
                   (<= local-count calcs))
         (mt-pdflatex-IO range file forks calcs local-count section-list)
@@ -91,14 +91,15 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
      t t)
     (map 'list 'string-to-number (split-string (buffer-string)))))
 
-(defun mt-find-paragraphs-IO (file section-list)
+(defun mt-find-paragraphs-IO (file)
   (let ((paragraph-list nil))
     (with-temp-buffer
       (let ((counts 0))
         (insert-file-contents file)
         (goto-char (point-min))
         (while (re-search-forward "^[^\\\\\n]+\\(\n[ \n]*$\\)" nil t)
-          (setq paragraph-list (append paragraph-list (list (line-number-at-pos (match-end 0))))))))
+          (setq paragraph-list (append paragraph-list
+				       (list (line-number-at-pos (match-end 0))))))))
     paragraph-list))
 
 (defun mt-pdflatex-IO (range file forks calcs local-count section-list)
