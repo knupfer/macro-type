@@ -341,22 +341,21 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
                         ".macro-type.plot.log"))))
 
 (defun mt-write-injection-IO (file-number section-list margin-list)
-  (let ((this-section-line (pop section-list))
-        (next-section-line (car section-list))
-        (margin-change (pop margin-list)))
-    (when (not (= margin-change 0))
-      (shell-command (concat "sed -i '" (number-to-string this-section-line)
-			     " s/\\(.*\\)/\\1 \\\\begingroup\\\\leftskip"
-                             (number-to-string (/ margin-change 2)) "mm"
-                             "\\\\rightskip\\\\leftskip"
-                             "/' /tmp/tmp.macro-type."
-                             (number-to-string file-number) ".tex"))
-      (shell-command (concat "sed -i '" (number-to-string next-section-line)
-                             " s/\\(.*\\)/\\\\endgroup"
-                             "\\1/' /tmp/tmp.macro-type."
-                             (number-to-string file-number) ".tex"))))
-  (when margin-list
-    (mt-write-injection-IO file-number section-list margin-list)))
+  (while margin-list
+    (let ((this-section-line (pop section-list))
+	  (next-section-line (car section-list))
+	  (margin-change (pop margin-list)))
+      (when (not (= margin-change 0))
+	(shell-command (concat "sed -i '" (number-to-string this-section-line)
+			       " s/\\(.*\\)/\\1 \\\\begingroup\\\\leftskip"
+			       (number-to-string (/ margin-change 2)) "mm"
+			       "\\\\rightskip\\\\leftskip"
+			       "/' /tmp/tmp.macro-type."
+			       (number-to-string file-number) ".tex"))
+       (shell-command (concat "sed -i '" (number-to-string next-section-line)
+			      " s/\\(.*\\)/\\\\endgroup"
+			      "\\1/' /tmp/tmp.macro-type."
+			      (number-to-string file-number) ".tex"))))))
 
 (defun mt-evaluate-result (current-count file forks section-list result)
   ;; Count overfull and underfull hboxes.
