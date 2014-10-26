@@ -99,8 +99,6 @@ minimize overfull and underfull hboxes.  Afterwards, it uses mdframes to
         (goto-char (point-min))
         (while (re-search-forward "^[^\\\\\n]+\\(\n[ \n]*$\\)" nil t)
           (setq paragraph-list (append paragraph-list (list (line-number-at-pos (match-end 0))))))))
-    (while (<= (car paragraph-list) (nth 0 section-list))
-      (pop paragraph-list))
     paragraph-list))
 
 (defun mt-pdflatex-IO (range file forks calcs local-count section-list)
